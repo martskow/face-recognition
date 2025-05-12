@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from skimage import feature
 from skimage import color
 from skimage import feature
-
+#bump
 # 1. LBP
 # https://pyimagesearch.com/2015/12/07/local-binary-patterns-with-python-opencv/
 class LBPExtractor:
