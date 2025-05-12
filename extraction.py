@@ -11,50 +11,46 @@ import matplotlib
 #matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 from skimage import feature
+from skimage import color
+from skimage import feature
 
 # 1. LBP
 # https://pyimagesearch.com/2015/12/07/local-binary-patterns-with-python-opencv/
 class LBPExtractor:
-    def __init__(self, numPoints=24, radius=8):
-        self.numPoints = numPoints
+    def __init__(self, num_points=24, radius=8):
+        self.num_points = num_points
         self.radius = radius
 
     def describe(self, image, eps=1e-7):
-        # Convert the original image to RGB
-        # img_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
         # Convert the original image to gray scale
         img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        lbp = feature.local_binary_pattern(img_gray, self.numPoints,
-        	self.radius, method="uniform")
+        lbp = feature.local_binary_pattern(img_gray, self.num_points,
+                                           self.radius, method="uniform")
         (hist, _) = np.histogram(lbp.ravel(),
-        	bins=np.arange(0, self.numPoints + 3),
-        	range=(0, self.numPoints + 2))
-        # normalize the histogram
+                                 bins=np.arange(0, self.num_points + 3),
+                                 range=(0, self.num_points + 2))
+
         hist = hist.astype("float")
         hist /= (hist.sum() + eps)
-        # return the histogram of Local Binary Patterns
+
         return hist
 
 # 2. HOG
-# https://medium.com/@dnemutlu/hog-feature-descriptor-263313c3b40d
+# https://www.geeksforgeeks.org/hog-feature-visualization-in-python-using-skimage/
 class HOGExtractor:
-    def __init__(self, win_size=(64, 128), block_size=(16, 16), block_stride=(8, 8), cell_size=(8, 8), nbins=9):
-        self.win_size = win_size
-        self.block_size = block_size
-        self.block_stride = block_stride
-        self.cell_size = cell_size
-        self.nbins = nbins
-    def describe(self, image):
-        # Convert the original image to RGB
-        # img_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    def __init__(self, orientations=9, pixels_per_cell=(8, 8), cells_per_block=(2, 2)):
+        self.orientations = orientations
+        self.pixels_per_cell = pixels_per_cell
+        self.cells_per_block = cells_per_block
 
+    def describe(self, image):
         # Convert the original image to gray scale
-        img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        img_gray = cv2.resize(img_gray, self.win_size)
-        hog = cv2.HOGDescriptor(self.win_size, self.block_size, self.block_stride, self.cell_size, self.nbins)
-        hog_features = hog.compute(img_gray)
-        return hog_features
+        img_gray = color.rgb2gray(image)
+        # img_gray_resized = cv2.resize(img_gray, (256, 256))
+        features, hog_image = feature.hog(img_gray, orientations=self.orientations,
+                                          pixels_per_cell=self.pixels_per_cell, cells_per_block=self.cells_per_block,
+                                          visualize=True)
+        return features, hog_image
 
 
 # 3. CNN MobileNetV3Small
@@ -111,9 +107,10 @@ if __name__ == "__main__":
 
     # HOG
     hog_extractor = HOGExtractor()
-    hog_features = hog_extractor.describe(image)
-    print("HOG feature vector length:", hog_features.shape)
-    print("HOG feature vector:", hog_features.flatten())
+    hog_features, hog_vis = hog_extractor.describe(image)
+    
+    print("HOG feature vector length:", len(hog_features))
+    print("HOG feature vector:", hog_features)
 
     # CNN
     cnn_extractor = CNNExtractor()
@@ -126,8 +123,3 @@ if __name__ == "__main__":
     facenet_features = facenet_extractor.describe(image)
     print("FaceNet feature vector length:", facenet_features.shape)
     print("FaceNet feature vector:", facenet_features)
-    
-
-
-
-
