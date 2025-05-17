@@ -36,10 +36,11 @@ def build_pipeline(extractor_name):
 
     extractor = extractor_map[extractor_name]["extractor"]
 
-    pipeline = Pipeline([
-        ('features', FeatureExtractor(extractor)),
-        ('scaler', StandardScaler()),
-        ('svm', SVC(kernel='rbf'))
+    pipeline = Pipeline(
+        steps=[
+            ('features', FeatureExtractor(extractor)),
+            ('standardScaler', StandardScaler()),
+            ('classifier', SVC())
     ])
 
     return pipeline

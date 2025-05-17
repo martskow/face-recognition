@@ -10,15 +10,14 @@ import torch
 import matplotlib
 #matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
-from skimage import feature
 from skimage import color
 from skimage import feature
-
+from sklearn.base import BaseEstimator
 
 #bump
 # 1. LBP
 # https://pyimagesearch.com/2015/12/07/local-binary-patterns-with-python-opencv/
-class LBPExtractor:
+class LBPExtractor(BaseEstimator):
     def __init__(self, num_points=24, radius=8):
         self.num_points = num_points
         self.radius = radius
@@ -45,7 +44,7 @@ class LBPExtractor:
 
 # 2. HOG
 # https://www.geeksforgeeks.org/hog-feature-visualization-in-python-using-skimage/
-class HOGExtractor:
+class HOGExtractor(BaseEstimator):
     def __init__(self, orientations=9, pixels_per_cell=(8, 8), cells_per_block=(2, 2)):
         self.orientations = orientations
         self.pixels_per_cell = pixels_per_cell
@@ -56,15 +55,15 @@ class HOGExtractor:
             image = np.array(image)
 
         # Convert the original image to gray scale
-        img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-        img_gray = img_gray.astype(np.float32) / 255.0  # [0, 1]
-        img_gray = (img_gray - 0.5) / 0.5  # [-1, 1]
+        # img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        #
+        # img_gray = img_gray.astype(np.float32) / 255.0  # [0, 1]
+        # img_gray = (img_gray - 0.5) / 0.5  # [-1, 1]
 
         # img_gray_resized = cv2.resize(img_gray, (256, 256))
-        features, hog_image = feature.hog(img_gray, orientations=self.orientations,
+        features = feature.hog(image, orientations=self.orientations,
                                           pixels_per_cell=self.pixels_per_cell, cells_per_block=self.cells_per_block,
-                                          visualize=True)
+                                          channel_axis=-1, feature_vector=True)
         return features
 
 
@@ -120,7 +119,7 @@ class FaceNetExtractor:
 
 
 if __name__ == "__main__":
-    path = "C:/Users/marts/Downloads/ja.jpeg"
+    path = "C:/Users/macie/Downloads/face.jpg"
     image = cv2.imread(path)
 
     # LBP
@@ -133,7 +132,7 @@ if __name__ == "__main__":
 
     # HOG
     hog_extractor = HOGExtractor()
-    hog_features, hog_vis = hog_extractor.describe(image)
+    hog_features = hog_extractor.describe(image)
 
     print("HOG feature vector length:", len(hog_features))
     print("HOG feature vector:", hog_features)
