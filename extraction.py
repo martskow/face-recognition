@@ -14,15 +14,31 @@ from skimage import color
 from skimage import feature
 from sklearn.base import BaseEstimator
 
-#bump
 # 1. LBP
 # https://pyimagesearch.com/2015/12/07/local-binary-patterns-with-python-opencv/
 class LBPExtractor(BaseEstimator):
+    """
+    Extracts Local Binary Pattern (LBP) features from an image.
+
+    Attributes:
+        num_points (int): Number of circularly symmetric neighbor set points.
+        radius (int): Radius of circle.
+    """
     def __init__(self, num_points=24, radius=8):
         self.num_points = num_points
         self.radius = radius
 
     def describe(self, image, eps=1e-7):
+        """
+        Computes the LBP histogram of the input image.
+
+        Args:
+            image (np.ndarray or PIL.Image): Input image (RGB or BGR).
+            eps (float): Small value to prevent division by zero during normalization.
+
+        Returns:
+            np.ndarray: Normalized histogram of LBP features.
+        """
         if isinstance(image, Image.Image):
             image = np.array(image)
 
@@ -45,12 +61,29 @@ class LBPExtractor(BaseEstimator):
 # 2. HOG
 # https://www.geeksforgeeks.org/hog-feature-visualization-in-python-using-skimage/
 class HOGExtractor(BaseEstimator):
+    """
+    Extracts Histogram of Oriented Gradients (HOG) features from an image.
+
+    Attributes:
+        orientations (int): Number of orientation bins.
+        pixels_per_cell (tuple): Size (in pixels) of a cell.
+        cells_per_block (tuple): Number of cells in each block.
+    """
     def __init__(self, orientations=9, pixels_per_cell=(8, 8), cells_per_block=(2, 2)):
         self.orientations = orientations
         self.pixels_per_cell = pixels_per_cell
         self.cells_per_block = cells_per_block
 
     def describe(self, image):
+        """
+        Computes the HOG feature vector for the input image.
+
+        Args:
+            image (np.ndarray or PIL.Image): Input image (RGB or BGR).
+
+        Returns:
+            np.ndarray: Flattened HOG feature vector.
+        """
         if isinstance(image, Image.Image):
             image = np.array(image)
 
@@ -70,6 +103,9 @@ class HOGExtractor(BaseEstimator):
 # 3. CNN MobileNetV3Small
 # https://huggingface.co/qualcomm/MobileNet-v3-Small
 class CNNExtractor:
+    """
+    Extracts high-level features from images using MobileNetV3Large pretrained on ImageNet.
+    """
     def __init__(self):
         base_model = MobileNetV3Large(
             input_shape=None,
@@ -88,6 +124,15 @@ class CNNExtractor:
         self.model = Model(inputs=base_model.input, outputs=base_model.output)
 
     def describe(self, image):
+        """
+        Extracts features from an image using the MobileNetV3Large CNN.
+
+        Args:
+            image (np.ndarray or PIL.Image): Input image (RGB).
+
+        Returns:
+            np.ndarray: Flattened feature vector from the CNN.
+        """
         if isinstance(image, Image.Image):
             image = np.array(image)
 
@@ -104,6 +149,9 @@ class CNNExtractor:
 # 4. FaceNet – InceptionResnetV1
 # https://github.com/timesler/facenet-pytorch
 class FaceNetExtractor:
+    """
+    Extracts facial features using the pretrained FaceNet (InceptionResnetV1) model.
+    """
     def __init__(self):
         self.model = InceptionResnetV1(pretrained='vggface2').eval()
         self.preprocess = transforms.Compose([
@@ -112,6 +160,15 @@ class FaceNetExtractor:
         ])
 
     def describe(self, image):
+        """
+        Computes the FaceNet feature embedding for the input image.
+
+        Args:
+               image (PIL.Image or np.ndarray): Input face image.
+
+        Returns:
+               np.ndarray: Feature vector representing the face.
+        """
         input_tensor = self.preprocess(image).unsqueeze(0)
         with torch.no_grad():
             features = self.model(input_tensor)
