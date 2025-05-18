@@ -97,7 +97,7 @@ class CNNExtractor:
         image = image.astype(np.float32) / 255.0  # Skala do [0, 1]
 
         image = preprocess_input(image) # This function is also normalizing
-        features = self.model.predict(image)
+        features = self.model.predict(image, verbose=0)
         return features.flatten()
 
 
