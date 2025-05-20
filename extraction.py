@@ -44,8 +44,6 @@ class LBPExtractor(BaseEstimator):
 
         # Convert the original image to gray scale
         img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        img_gray = img_gray.astype(np.float32) / 255.0  # [0, 1]
-        img_gray = (img_gray - 0.5) / 0.5  # [-1, 1]
         lbp = feature.local_binary_pattern(img_gray, self.num_points,
                                            self.radius, method="uniform")
         (hist, _) = np.histogram(lbp.ravel(),
@@ -88,15 +86,12 @@ class HOGExtractor(BaseEstimator):
             image = np.array(image)
 
         # Convert the original image to gray scale
-        # img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        #
-        # img_gray = img_gray.astype(np.float32) / 255.0  # [0, 1]
-        # img_gray = (img_gray - 0.5) / 0.5  # [-1, 1]
+        img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
         # img_gray_resized = cv2.resize(img_gray, (256, 256))
-        features = feature.hog(image, orientations=self.orientations,
+        features = feature.hog(img_gray, orientations=self.orientations,
                                           pixels_per_cell=self.pixels_per_cell, cells_per_block=self.cells_per_block,
-                                          channel_axis=-1, feature_vector=True)
+                                          channel_axis=None, feature_vector=True)
         return features
 
 
@@ -139,9 +134,8 @@ class CNNExtractor:
         #image = cv2.resize(image, (224, 224))
         image = image.astype(np.float32)
         image = np.expand_dims(image, axis=0)
-        image = image.astype(np.float32) / 255.0  # Skala do [0, 1]
 
-        image = preprocess_input(image) # This function is also normalizing
+        image = preprocess_input(image) # This function is also normalizing and scaling
         features = self.model.predict(image, verbose=0)
         return features.flatten()
 

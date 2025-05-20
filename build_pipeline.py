@@ -25,22 +25,23 @@ class FeatureExtractor(BaseEstimator, TransformerMixin):
 
 def build_pipeline(extractor_name):
     extractor_map = {
-        "lbp": {"extractor": LBPExtractor()},
-        "hog": {"extractor": HOGExtractor()},
-        "cnn": {"extractor": CNNExtractor()},
-        "facenet": {"extractor": FaceNetExtractor()},
+        "lbp": lambda: LBPExtractor(),
+        "hog": lambda: HOGExtractor(),
+        "cnn": lambda: CNNExtractor(),
+        "facenet": lambda: FaceNetExtractor(),
     }
 
     if extractor_name not in extractor_map:
         raise ValueError(f"Unknown extractor: {extractor_name}")
 
-    extractor = extractor_map[extractor_name]["extractor"]
+    extractor = extractor_map[extractor_name]()
 
     pipeline = Pipeline(
         steps=[
             ('features', FeatureExtractor(extractor)),
             ('standardScaler', StandardScaler()),
             ('classifier', SVC())
-    ])
+        ]
+    )
 
     return pipeline
