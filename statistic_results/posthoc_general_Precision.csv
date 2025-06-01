@@ -1,0 +1,7 @@
+group1,group2,meandiff,p-adj,lower,upper,reject
+CNN,FN,0.3388,0.0,0.3186,0.359,True
+CNN,HOG,0.0586,0.0,0.0384,0.0787,True
+CNN,LBP,-0.0101,0.5423,-0.0302,0.0101,False
+FN,HOG,-0.2803,0.0,-0.3004,-0.2601,True
+FN,LBP,-0.3489,0.0,-0.3691,-0.3287,True
+HOG,LBP,-0.0686,0.0,-0.0888,-0.0484,True

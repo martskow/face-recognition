@@ -1,0 +1,11 @@
+FAR,FRR,Precision,Recall,Time,Params
+0.5146579804560261,0.40372670807453415,0.5485714285714286,0.5962732919254659,1.934736800000034,"{'classifier__C': 1, 'classifier__kernel': 'rbf', 'features__extractor__num_points': 8, 'features__extractor__radius': 2}"
+0.4117647058823529,0.453416149068323,0.5827814569536424,0.546583850931677,4.0220369333333865,"{'classifier__C': 100, 'classifier__kernel': 'linear', 'features__extractor__num_points': 20, 'features__extractor__radius': 5}"
+0.45098039215686275,0.3695652173913043,0.5953079178885631,0.6304347826086957,1.8981520999999855,"{'classifier__C': 1, 'classifier__kernel': 'rbf', 'features__extractor__num_points': 8, 'features__extractor__radius': 2}"
+0.42671009771986973,0.45794392523364486,0.5704918032786885,0.5420560747663551,4.069804999999936,"{'classifier__C': 0.1, 'classifier__kernel': 'rbf', 'features__extractor__num_points': 20, 'features__extractor__radius': 4}"
+0.4527687296416938,0.4797507788161994,0.545751633986928,0.5202492211838006,4.021504499999992,"{'classifier__C': 0.1, 'classifier__kernel': 'linear', 'features__extractor__num_points': 20, 'features__extractor__radius': 5}"
+0.5244299674267101,0.4409937888198758,0.5278592375366569,0.5590062111801242,3.3007599333333624,"{'classifier__C': 1, 'classifier__kernel': 'rbf', 'features__extractor__num_points': 16, 'features__extractor__radius': 2}"
+0.49673202614379086,0.38509316770186336,0.5657142857142857,0.6149068322981367,4.085366733333103,"{'classifier__C': 100, 'classifier__kernel': 'linear', 'features__extractor__num_points': 20, 'features__extractor__radius': 4}"
+0.5261437908496732,0.422360248447205,0.5360230547550432,0.577639751552795,3.2252263000003345,"{'classifier__C': 1, 'classifier__kernel': 'linear', 'features__extractor__num_points': 16, 'features__extractor__radius': 5}"
+0.498371335504886,0.38006230529595014,0.5653409090909091,0.6199376947040498,4.025191299999885,"{'classifier__C': 0.1, 'classifier__kernel': 'linear', 'features__extractor__num_points': 20, 'features__extractor__radius': 4}"
+0.4755700325732899,0.43302180685358255,0.5548780487804879,0.5669781931464174,3.4642180999999255,"{'classifier__C': 100, 'classifier__kernel': 'rbf', 'features__extractor__num_points': 16, 'features__extractor__radius': 3}"
