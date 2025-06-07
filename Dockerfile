@@ -25,8 +25,5 @@ WORKDIR /app
 CMD ["python", "/dataset/script.py"]
 
 
-# docker build -t mxnet-dataset .
-# docker run -v /Users/dawid/PycharmProjects/FaceAuthorization/dataset:/dataset mxnet-dataset
-
 # docker buildx build --platform linux/amd64 -t mxnet-dataset_x86 . --load
 # docker run -it -v /Users/dawid/PycharmProjects/FaceAuthorization/dataset:/dataset  mxnet-dataset_x86

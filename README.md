@@ -55,7 +55,32 @@ pip install -r requirements.txt
 ```
 
 ## Dataset
-The dataset is already included in the dataset/ directory, structured as follows:
+
+### The Problem
+The original face recognition dataset requires special processing to extract usable files, but many users encountered compatibility issues because:
+- The extraction depends on **MXNet** which has complex system dependencies
+- This only works on specific Python environments
+
+### Our Docker Solution
+We've created an isolated Docker environment that:
+1. Contains all the correct library versions
+2. Handles the extraction automatically
+3. Works consistently across different computers
+
+### How to Prepare Your Dataset
+
+1. **Place your dataset**:
+    - Put the original dataset files in the `dataset` folder of this project
+    - The structure should be: `FaceAuthorization/dataset/faces_webface_112x112`
+
+2. **Build the Docker image**:
+   ```bash
+   docker buildx build --platform linux/amd64 -t mxnet-dataset_x86 . --load
+3. **Run the extraction:**
+   ```bash
+   docker run -it -v /path/to/your/dataset:/dataset mxnet-dataset_x86
+
+But for comfortable usage the dataset is already included in the dataset/ directory, structured as follows:
 
 dataset/
 
