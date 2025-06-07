@@ -4,25 +4,29 @@ This project is being developed as part of the "Scientific and Implementation Pr
 This repository contains the full code and dataset for a comparative study of facial feature extraction methods, including HOG, LBP, MobileNetV3, and FaceNet. The goal is to evaluate the trade-offs between accuracy, robustness to image perturbations, and computational efficiency in the context of binary face authentication.
 
 ## Repository Structure
-├── dataset/ # Dataset (authorized/unauthorized subfolders)
+├── `dataset/` - Dataset (authorized/unauthorized subfolders).
 
-├── FaceBinaryDataset.py # PyTorch Dataset class for loading and preprocessing images
+├── `plots/` - Statistical visualization in the form of histograms, box plots and heatmaps.
 
-├── extraction.py # Implementations of HOG, LBP, CNN (MobileNetV3), and FaceNet feature extractors
+├── `statistic_results/` - results of the statistical analysis in the form of `.csv` files.
 
-├── build_pipeline.py # Common pipeline: feature extraction, scaling, and classification
+├── `FaceBinaryDataset.py` - PyTorch Dataset class for loading and preprocessing images.
 
-├── metrics.py # Functions to compute FAR, FRR, precision, recall
+├── `README.md` - This file.
 
-├── perturbations.py # Code to apply image perturbations
+├── `build_pipeline.py` - Common pipeline: feature extraction, scaling, and classification.
 
-├── research.ipynb # Main notebook: training, cross-validation, evaluation
+├── `extraction.py` - Implementations of HOG, LBP, CNN (MobileNetV3), and FaceNet feature extractors.
 
-├── results/ # Statistical analysis and visualization scripts
+├── `metrics.py` - Functions to compute FAR, FRR, precision, recall.
 
-├── requirements.txt # List of required Python packages
+├── `perturbations.py` - Code to apply image perturbations.
 
-└── README.md # This file
+├── `requirements.txt` - List of required Python packages.
+
+├── `research.ipynb` - Main notebook: training, cross-validation, evaluation.
+
+└── `results.ipynb` - Statistical analysis and visualization scripts.
 
 ## 🧠 Feature Extraction Methods
 
