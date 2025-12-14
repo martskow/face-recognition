@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>Registration</title>
+<style>
+body { font-family: Arial, sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; }
+.container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 15px rgba(0,0,0,0.2); width: 500px; text-align: center; }
+h1 { margin-bottom: 20px; }
+.camera-container { margin-bottom: 10px; }
+img { border-radius: 10px; border: 2px solid #333; width: 100%; height: auto; }
+input { width: 90%; padding: 10px; margin: 5px 0; border-radius: 5px; border: 1px solid #ccc; }
+button { padding: 10px 20px; border-radius: 5px; border: none; background: #4CAF50; color: white; cursor: pointer; font-size: 16px; }
+button:hover { background: #45a049; }
+.status { margin-top: 10px; color: red; font-weight: bold; min-height: 20px; }
+.info { font-size: 14px; color: #555; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="container">
+    <h1>Registration</h1>
+
+    <div class="camera-container">
+        <img id="videoFeed" src="/video" alt="Strumień wideo" style="border-radius:10px; border:2px solid #333; width:50%; margin-bottom:10px;" />
+    </div>
+
+    <input type="text" id="firstName" placeholder="First Name" />
+    <input type="text" id="lastName" placeholder="Last Name" />
+    <input type="text" id="email" placeholder="Email" />
+    <input type="password" id="password" placeholder="Password" />
+    <input type="password" id="password2" placeholder="Repeat password" />
+    <button id="registerBtn">Take a photo and register</button>
+    <div class="info">Stand straight in front of the camera, make sure your face is clearly visible, and then click the button.</div>
+    <div class="status" id="status"></div>
+</div>
+
+<canvas id="hiddenCanvas" width="160" height="160" style="display:none;"></canvas>
+
+<script>
+const videoFeed = document.getElementById('videoFeed');
+const canvas = document.getElementById('hiddenCanvas');
+const ctx = canvas.getContext('2d');
+const registerBtn = document.getElementById('registerBtn');
+const statusDiv = document.getElementById('status');
+
+// Pobranie obrazu z backendu
+function getFrameBase64() {
+    ctx.drawImage(videoFeed, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/png');
+}
+
+registerBtn.addEventListener('click', () => {
+    const data = {
+        first_name: document.getElementById('firstName').value,
+        last_name: document.getElementById('lastName').value,
+        email: document.getElementById('email').value,
+        password: document.getElementById('password').value,
+        password2: document.getElementById('password2').value,
+        image: getFrameBase64()
+    };
+
+    fetch('/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    })
+    .then(res => res.json())
+    .then(data => { statusDiv.innerText = data.message; })
+    .catch(err => { statusDiv.innerText = "Registration error"; });
+});
+</script>
+<script>
+const videoFeed = document.getElementById('videoFeed');
+const registerBtn = document.getElementById('registerBtn');
+const statusDiv = document.getElementById('status');
+
+registerBtn.addEventListener('click', () => {
+    // zapisujemy obecne wartości pól
+    const formData = {
+        first_name: document.getElementById('firstName').value,
+        last_name: document.getElementById('lastName').value,
+        email: document.getElementById('email').value,
+        password: document.getElementById('password').value,
+        password2: document.getElementById('password2').value,
+        gender: document.getElementById('gender').value,
+        age: document.getElementById('age').value
+    };
+
+    // pobranie klatki z ukrytego canvas
+    const canvas = document.getElementById('hiddenCanvas');
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    img.src = videoFeed.src;
+    img.onload = () => {
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const imageBase64 = canvas.toDataURL('image/png');
+
+        fetch('/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({...formData, image: imageBase64})
+        })
+        .then(res => res.json())
+        .then(data => {
+            statusDiv.innerText = data.message;
+            if (data.message.includes("Nie wykryto twarzy")) {
+                // odświeżenie strumienia kamery
+                videoFeed.src = '/video?rand=' + Math.random();
+                // przywracamy dane w polach
+                document.getElementById('firstName').value = formData.first_name;
+                document.getElementById('lastName').value = formData.last_name;
+                document.getElementById('email').value = formData.email;
+                document.getElementById('password').value = formData.password;
+                document.getElementById('password2').value = formData.password2;
+                document.getElementById('gender').value = formData.gender;
+                document.getElementById('age').value = formData.age;
+            }
+        })
+        .catch(err => { statusDiv.innerText = "Registration error"; });
+    }
+});
+</script>
+</body>
+</html>

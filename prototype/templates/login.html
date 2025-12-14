@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>Biometric Authorization System</title>
+<style>
+body { font-family: Arial, sans-serif; background: #f5f5f5; display: flex; justify-content: center; align-items: center; height: 100vh; }
+.container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 15px rgba(0,0,0,0.2); width: 500px; text-align: center; }
+h1 { margin-bottom: 20px; }
+.camera-container { margin-bottom: 10px; }
+.camera-container img { border-radius:10px; border:2px solid #333; width: 100%; max-width: 400px; height: auto; }
+input { width: 90%; padding: 10px; margin: 10px 0; border-radius: 5px; border: 1px solid #ccc; }
+button { padding: 10px 20px; border-radius: 5px; border: none; background: #4CAF50; color: white; cursor: pointer; font-size: 16px; }
+button:hover { background: #45a049; }
+.register-link { margin-top: 15px; display: block; color: #007BFF; cursor: pointer; text-decoration: underline; }
+.status { margin-top: 10px; color: red; font-weight: bold; min-height: 20px; }
+</style>
+</head>
+<body>
+<div class="container">
+    <h1>Biometric Authorization System</h1>
+
+    <div class="camera-container">
+        <img id="videoFeed" src="/video" alt="Strumień wideo" />
+    </div>
+
+    <input type="text" id="email" placeholder="Email" />
+    <input type="password" id="password" placeholder="Password" />
+    <button id="loginBtn">Login</button>
+    <span class="register-link" onclick="window.location.href='/register_view'">Don't have an account? Register</span>
+    <div class="status" id="status"></div>
+</div>
+
+<canvas id="hiddenCanvas" width="160" height="160" style="display:none;"></canvas>
+
+<script>
+const loginBtn = document.getElementById('loginBtn');
+const statusDiv = document.getElementById('status');
+
+loginBtn.addEventListener('click', () => {
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+
+    fetch('/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+    })
+    .then(res => res.json())
+    .then(data => { statusDiv.innerText = data.message; })
+    .catch(() => {
+        statusDiv.innerText = "Server error";
+        statusDiv.style.color = "red";
+    });
+});
+</script>
+</body>
+</html>
