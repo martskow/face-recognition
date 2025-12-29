@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <title>Panel Użytkownika</title>
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+    .card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.1); width: 350px; text-align: center; }
+    .avatar { background: #4CAF50; color: white; width: 80px; height: 80px; line-height: 80px; border-radius: 50%; font-size: 40px; margin: 0 auto 20px; }
+    h2 { margin: 10px 0; color: #333; }
+    p { color: #666; font-size: 14px; margin: 5px 0; }
+    .status-badge { display: inline-block; background: #e8f5e9; color: #2e7d32; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; margin-top: 15px; }
+    .logout-btn { display: block; margin-top: 25px; text-decoration: none; color: #d32f2f; font-weight: bold; border: 1px solid #d32f2f; padding: 10px; border-radius: 6px; transition: 0.3s; }
+    .logout-btn:hover { background: #d32f2f; color: white; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="avatar">{{ user.first_name[0] }}</div>
+  <h2>Hello, {{ user.first_name }}!</h2>
+  <p>{{ user.first_name }} {{ user.last_name }}</p>
+  <p>{{ user.email }}</p>
+  <div class="status-badge">Verification: Passed</div>
+  <a href="/logout" class="logout-btn">Logout</a>
+</div>
+</body>
+</html>

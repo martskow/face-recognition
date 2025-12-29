@@ -1,19 +1,35 @@
 <!DOCTYPE html>
 <html lang="pl">
 <head>
-<meta charset="UTF-8">
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='shield.png') }}"><meta charset="UTF-8">
 <title>Registration</title>
 <style>
-body { font-family: Arial, sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; }
-.container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 15px rgba(0,0,0,0.2); width: 500px; text-align: center; }
+body { font-family: Arial, sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; }
+.container {margin-top:10px; display: flex; flex-direction: column; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 15px rgba(0,0,0,0.2); width: 500px; text-align: center; justify-content: center; align-items: center; }
 h1 { margin-bottom: 20px; }
-.camera-container { margin-bottom: 10px; }
-img { border-radius: 10px; border: 2px solid #333; width: 100%; height: auto; }
+.camera-container {
+    width: 20vw;
+    height: 40vh;
+    border: 2px solid #333;
+    border-radius: 10px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.camera-container img {
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+}
 input { width: 90%; padding: 10px; margin: 5px 0; border-radius: 5px; border: 1px solid #ccc; }
 button { padding: 10px 20px; border-radius: 5px; border: none; background: #4CAF50; color: white; cursor: pointer; font-size: 16px; }
 button:hover { background: #45a049; }
 .status { margin-top: 10px; color: red; font-weight: bold; min-height: 20px; }
 .info { font-size: 14px; color: #555; margin-top: 10px; }
+.login-link { margin-top: 10px; display: block; color: #007BFF; cursor: pointer; text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -21,7 +37,10 @@ button:hover { background: #45a049; }
     <h1>Registration</h1>
 
     <div class="camera-container">
-        <img id="videoFeed" src="/video" alt="Strumień wideo" style="border-radius:10px; border:2px solid #333; width:50%; margin-bottom:10px;" />
+        <img id="videoFeed" alt="Strumień wideo" />
+    </div>
+
+    <div id="face_status" style="font-size:20px; font-weight:bold;">
     </div>
 
     <input type="text" id="firstName" placeholder="First Name" />
@@ -32,28 +51,53 @@ button:hover { background: #45a049; }
     <button id="registerBtn">Take a photo and register</button>
     <div class="info">Stand straight in front of the camera, make sure your face is clearly visible, and then click the button.</div>
     <div class="status" id="status"></div>
+    <span class="login-link" onclick="window.location.href='/'">Go to Login page</span>
 </div>
 
 <canvas id="hiddenCanvas" width="160" height="160" style="display:none;"></canvas>
 
 <script>
-const videoFeed = document.getElementById('videoFeed');
-const canvas = document.getElementById('hiddenCanvas');
-const ctx = canvas.getContext('2d');
-const registerBtn = document.getElementById('registerBtn');
-const statusDiv = document.getElementById('status');
+    const videoFeed = document.getElementById('videoFeed');
+    const canvas = document.getElementById('hiddenCanvas');
+    const ctx = canvas.getContext('2d');
+    const registerBtn = document.getElementById('registerBtn');
+    const statusDiv = document.getElementById('status');
 
-// Pobranie obrazu z backendu
-function getFrameBase64() {
-    ctx.drawImage(videoFeed, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL('image/png');
-}
+    function startStream() {
+        document.getElementById("videoFeed").src =
+            "/video?ts=" + Date.now();
+    }
+
+    window.addEventListener("load", startStream);
+
+
+    function validateEmail(email) {
+        const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        return re.test(email);
+    }
+
+    // Pobranie obrazu z backendu
+    function getFrameBase64() {
+        ctx.drawImage(videoFeed, 0, 0, canvas.width, canvas.height);
+        return canvas.toDataURL('image/png');
+    }
+
+
 
 registerBtn.addEventListener('click', () => {
-    const data = {
+const emailValue = document.getElementById('email').value;
+
+
+if (!validateEmail(emailValue)) {
+statusDiv.innerText = "Błędny format adresu e-mail!";
+statusDiv.style.color = "red";
+return; // Przerywa wysyłanie danych do serwera
+}
+
+const data = {
         first_name: document.getElementById('firstName').value,
         last_name: document.getElementById('lastName').value,
-        email: document.getElementById('email').value,
+        email: emailValue,
         password: document.getElementById('password').value,
         password2: document.getElementById('password2').value,
         image: getFrameBase64()
@@ -68,57 +112,22 @@ registerBtn.addEventListener('click', () => {
     .then(data => { statusDiv.innerText = data.message; })
     .catch(err => { statusDiv.innerText = "Registration error"; });
 });
-</script>
-<script>
-const videoFeed = document.getElementById('videoFeed');
-const registerBtn = document.getElementById('registerBtn');
-const statusDiv = document.getElementById('status');
-
-registerBtn.addEventListener('click', () => {
-    // zapisujemy obecne wartości pól
-    const formData = {
-        first_name: document.getElementById('firstName').value,
-        last_name: document.getElementById('lastName').value,
-        email: document.getElementById('email').value,
-        password: document.getElementById('password').value,
-        password2: document.getElementById('password2').value,
-        gender: document.getElementById('gender').value,
-        age: document.getElementById('age').value
-    };
-
-    // pobranie klatki z ukrytego canvas
-    const canvas = document.getElementById('hiddenCanvas');
-    const ctx = canvas.getContext('2d');
-    const img = new Image();
-    img.src = videoFeed.src;
-    img.onload = () => {
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        const imageBase64 = canvas.toDataURL('image/png');
-
-        fetch('/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({...formData, image: imageBase64})
-        })
-        .then(res => res.json())
+function updateFaceStatus() {
+    fetch("/face_status")
+        .then(r => r.json())
         .then(data => {
-            statusDiv.innerText = data.message;
-            if (data.message.includes("Nie wykryto twarzy")) {
-                // odświeżenie strumienia kamery
-                videoFeed.src = '/video?rand=' + Math.random();
-                // przywracamy dane w polach
-                document.getElementById('firstName').value = formData.first_name;
-                document.getElementById('lastName').value = formData.last_name;
-                document.getElementById('email').value = formData.email;
-                document.getElementById('password').value = formData.password;
-                document.getElementById('password2').value = formData.password2;
-                document.getElementById('gender').value = formData.gender;
-                document.getElementById('age').value = formData.age;
+            const el = document.getElementById("face_status");
+            if (data.face_detected) {
+                el.textContent = "Face detected";
+                el.style.color = "green";
+            } else {
+                el.textContent = "Face not detected yet";
+                el.style.color = "red";
             }
-        })
-        .catch(err => { statusDiv.innerText = "Registration error"; });
-    }
-});
+        });
+}
+setInterval(updateFaceStatus, 500);
 </script>
+
 </body>
 </html>

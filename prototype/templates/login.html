@@ -1,18 +1,35 @@
 <!DOCTYPE html>
 <html lang="pl">
 <head>
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='shield.png') }}">
 <meta charset="UTF-8">
 <title>Biometric Authorization System</title>
 <style>
-body { font-family: Arial, sans-serif; background: #f5f5f5; display: flex; justify-content: center; align-items: center; height: 100vh; }
-.container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 15px rgba(0,0,0,0.2); width: 500px; text-align: center; }
+body { font-family: Arial, sans-serif; background: #f5f5f5; display: flex; justify-content: center; align-items: center; }
+.container { margin-top:10px; display: flex; flex-direction: column; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 15px rgba(0,0,0,0.2); width: 500px; text-align: center; justify-content: center; align-items: center; }
 h1 { margin-bottom: 20px; }
-.camera-container { margin-bottom: 10px; }
-.camera-container img { border-radius:10px; border:2px solid #333; width: 100%; max-width: 400px; height: auto; }
+.camera-container {
+    width: 20vw;
+    height: 40vh;
+    border: 2px solid #333;
+    border-radius: 10px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.camera-container img {
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+}
+
 input { width: 90%; padding: 10px; margin: 10px 0; border-radius: 5px; border: 1px solid #ccc; }
 button { padding: 10px 20px; border-radius: 5px; border: none; background: #4CAF50; color: white; cursor: pointer; font-size: 16px; }
 button:hover { background: #45a049; }
-.register-link { margin-top: 15px; display: block; color: #007BFF; cursor: pointer; text-decoration: underline; }
+.register-link { margin-top: 10px; display: block; color: #007BFF; cursor: pointer; text-decoration: underline; }
 .status { margin-top: 10px; color: red; font-weight: bold; min-height: 20px; }
 </style>
 </head>
@@ -21,37 +38,81 @@ button:hover { background: #45a049; }
     <h1>Biometric Authorization System</h1>
 
     <div class="camera-container">
-        <img id="videoFeed" src="/video" alt="Strumień wideo" />
+        <img id="videoFeed" alt="Strumień wideo" />
+    </div>
+
+    <div id="face_status" style="font-size:20px; font-weight:bold;">
     </div>
 
     <input type="text" id="email" placeholder="Email" />
     <input type="password" id="password" placeholder="Password" />
     <button id="loginBtn">Login</button>
-    <span class="register-link" onclick="window.location.href='/register_view'">Don't have an account? Register</span>
     <div class="status" id="status"></div>
+    <span class="register-link" onclick="window.location.href='/register_view'">Don't have an account? Register</span>
 </div>
 
 <canvas id="hiddenCanvas" width="160" height="160" style="display:none;"></canvas>
 
 <script>
+function startStream() {
+    document.getElementById("videoFeed").src =
+        "/video?ts=" + Date.now();
+}
+window.addEventListener("load", startStream);
+function updateFaceStatus() {
+    fetch("/face_status")
+        .then(r => r.json())
+        .then(data => {
+            const el = document.getElementById("face_status");
+            if (data.face_detected) {
+                el.textContent = "Face detected";
+                el.style.color = "green";
+            } else {
+                el.textContent = "Face not detected yet";
+                el.style.color = "red";
+            }
+        });
+}
+setInterval(updateFaceStatus, 500);
+
 const loginBtn = document.getElementById('loginBtn');
 const statusDiv = document.getElementById('status');
 
 loginBtn.addEventListener('click', () => {
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
+    const emailValue = document.getElementById('email').value;
+    const passwordValue = document.getElementById('password').value;
+
+    const payload = {
+        email: emailValue,
+        password: passwordValue
+    };
 
     fetch('/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify(payload)
     })
-    .then(res => res.json())
-    .then(data => { statusDiv.innerText = data.message; })
-    .catch(() => {
-        statusDiv.innerText = "Server error";
-        statusDiv.style.color = "red";
-    });
+        .then(res => {
+
+            return res.json().then(data => {
+                if (!res.ok) throw new Error(data.message || "Błąd logowania");
+                return data;
+            });
+        })
+        .then(data => {
+            statusDiv.innerText = data.message;
+            statusDiv.style.color = "green";
+
+            if (data.redirect) {
+                setTimeout(() => {
+                    window.location.href = data.redirect;
+                }, 1000);
+            }
+        })
+        .catch((err) => {
+            statusDiv.innerText = err.message;
+            statusDiv.style.color = "red";
+        });
 });
 </script>
 </body>
