@@ -60,6 +60,9 @@ image_cropper = CropImage()
 
 face_detected = False
 
+MIN_FACE_AREA_RATIO = 0.08
+MAX_FACE_AREA_RATIO = 0.35
+
 
 def encrypt_embedding(embedding):
     return cipher_suite.encrypt(json.dumps(embedding).encode())
@@ -73,6 +76,19 @@ def base64_to_image(base64_str):
     img_bytes = base64.b64decode(base64_str.split(',')[1])
     img = Image.open(BytesIO(img_bytes)).convert('RGB')
     return np.array(img) / 255.0
+
+
+def is_face_distance_valid(bbox, frame_shape):
+    x, y, w, h = bbox
+    frame_h, frame_w = frame_shape[:2]
+
+    face_area = w * h
+    frame_area = frame_w * frame_h
+
+    ratio = face_area / frame_area
+
+    return MIN_FACE_AREA_RATIO <= ratio <= MAX_FACE_AREA_RATIO, ratio
+
 
 
 def generate_frames():
@@ -183,6 +199,18 @@ def login():
 
     if face is None:
         return jsonify({"message": "Face not detected"}), 400
+
+    valid, ratio = is_face_distance_valid(coords, frame.shape)
+
+    if not valid:
+        if ratio > MAX_FACE_AREA_RATIO:
+            return jsonify({
+                "message": "Face too close to camera"
+            }), 400
+        else:
+            return jsonify({
+                "message": "Face too far from camera"
+            }), 400
 
     prediction = np.zeros((1, 3))
 
