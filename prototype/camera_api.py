@@ -160,7 +160,7 @@ def register():
         return jsonify({"message": "E-mail already exists"}), 400
 
     img = base64_to_image(data['image'])
-    face, _ = detector.get_face(img)
+    face, coords, _ = detector.get_face(img)
 
     if face is None:
         return jsonify({"message": "Face not detected"}), 400
