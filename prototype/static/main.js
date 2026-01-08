@@ -7,7 +7,7 @@ navigator.mediaDevices.getUserMedia({ video: true })
     video.srcObject = stream;
 })
 .catch(err => {
-    console.error("Błąd kamery:", err);
+    console.error("Camera error:", err);
 });
 
 function captureFrame() {
@@ -28,7 +28,7 @@ function registerUser() {
     })
     .then(resp => resp.json())
     .then(data => status.innerText = data.message)
-    .catch(err => status.innerText = "Błąd rejestracji");
+    .catch(err => status.innerText = "Registration error");
 }
 
 function loginUser() {
@@ -40,7 +40,7 @@ function loginUser() {
     })
     .then(resp => resp.json())
     .then(data => status.innerText = data.message)
-    .catch(err => status.innerText = "Błąd logowania");
+    .catch(err => status.innerText = "Login error");
 }
 
 function sendImage(endpoint, canvas) {

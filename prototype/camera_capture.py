@@ -7,20 +7,17 @@ class ImageAcquisition:
         self.frame_size = frame_size
 
         if not self.cap.isOpened():
-            raise RuntimeError("Nie można otworzyć kamery")
+            raise RuntimeError("Unable to access the camera")
 
     def get_frame(self):
         ret, frame = self.cap.read()
         if not ret:
             return None
 
-        # zmiana rozmiaru
         frame = cv2.resize(frame, self.frame_size)
 
-        # BGR -> RGB
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        # normalizacja [0,1]
         frame_norm = frame_rgb / 255.0
 
         return frame_norm
@@ -38,7 +35,6 @@ if __name__ == "__main__":
         if frame is None:
             break
 
-        # do podglądu wracamy do BGR
         preview = (frame * 255).astype(np.uint8)
         preview = cv2.cvtColor(preview, cv2.COLOR_RGB2BGR)
 

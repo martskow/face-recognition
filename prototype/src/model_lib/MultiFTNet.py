@@ -6,7 +6,7 @@
 # @Software : PyCharm
 from torch import nn
 import torch.nn.functional as F
-from src.model_lib.MiniFASNet import MiniFASNetV1,MiniFASNetV2,MiniFASNetV1SE,MiniFASNetV2SE
+from prototype.src.model_lib.MiniFASNet import MiniFASNetV1,MiniFASNetV2,MiniFASNetV1SE,MiniFASNetV2SE
 
 
 class FTGenerator(nn.Module):

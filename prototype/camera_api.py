@@ -6,6 +6,7 @@ import base64
 import warnings
 from io import BytesIO
 from PIL import Image
+import re
 
 from flask import Flask, Response, jsonify, render_template, request, session, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
@@ -24,7 +25,7 @@ warnings.filterwarnings('ignore')
 app = Flask(__name__)
 app.secret_key = 'TAI_SESSION_KEY_123'
 
-MODEL_DIR = "prototype/resources/anti_spoof_models"
+MODEL_DIR = "../prototype/resources/anti_spoof_models"
 DEVICE_ID = 0
 
 # --- DB ---
@@ -90,6 +91,25 @@ def is_face_distance_valid(bbox, frame_shape):
     return MIN_FACE_AREA_RATIO <= ratio <= MAX_FACE_AREA_RATIO, ratio
 
 
+def validate_user_data(data):
+    errors = []
+
+    name_regex = r"^[A-Za-zżźćńółęąśŻŹĆŃÓŁĘĄŚ\-]{2,50}$"
+
+    if not re.match(name_regex, data.get('first_name', '')):
+        errors.append("Name contains forbidden characters or is too short (2 characters minimum)")
+
+    if not re.match(name_regex, data.get('last_name', '')):
+        errors.append("Surname contains forbidden characters or is too short (2 characters minimum)")
+
+    email_regex = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
+    if not re.match(email_regex, data.get('email', '')):
+        errors.append("Invalid email address syntax")
+
+    if len(data.get('password', '')) < 8:
+        errors.append("Password has to be at least 8 characters long")
+
+    return errors
 
 def generate_frames():
     global face_detected
@@ -155,12 +175,14 @@ def face_status():
 @app.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
-
+    validation_errors = validate_user_data(data)
+    if validation_errors:
+        return jsonify({"message": validation_errors[0]}), 400
     if User.query.filter_by(email=data['email']).first():
         return jsonify({"message": "E-mail already exists"}), 400
 
     img = base64_to_image(data['image'])
-    face, _ = detector.get_face(img)
+    face, coords, _ = detector.get_face(img)
 
     if face is None:
         return jsonify({"message": "Face not detected"}), 400

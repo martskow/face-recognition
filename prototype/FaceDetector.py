@@ -54,20 +54,16 @@ class FaceDetector:
             x, y, w, h = faces[0]
             warning = None
 
-        # 1. Przygotowanie COORDS (dla Anti-Spoofing)
         coords = [int(x), int(y), int(w), int(h)]
 
-        # 2. Przygotowanie FACE (dla FaceNet)
         face_img = frame[y:y + h, x:x + w]
 
-        # Konwersja na RGB dla PIL (jeśli oryginał był w BGR)
         if not is_rgb:
             face_img = cv2.cvtColor(face_img, cv2.COLOR_BGR2RGB)
 
         face_img = cv2.resize(face_img, (self.dimension, self.dimension))
         face_img_pil = Image.fromarray(face_img)
 
-        # Normalizacja [0, 1]
         face_norm = np.array(face_img_pil) / 255.0
 
         return face_norm, coords, warning
