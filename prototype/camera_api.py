@@ -282,7 +282,7 @@ def login():
 
 
 if __name__ == "__main__":
-    try:
-        app.run(host='0.0.0.0', port=697, debug=True)
-    finally:
-        camera.release()
+    try: # pragma: no cover
+        app.run(host='0.0.0.0', port=697, debug=True) # pragma: no cover
+    finally: # pragma: no cover
+        camera.release() # pragma: no cover

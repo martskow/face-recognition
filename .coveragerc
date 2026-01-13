@@ -1,0 +1,7 @@
+[run]
+source = prototype
+omit =
+    prototype/src/*
+
+[report]
+show_missing = True

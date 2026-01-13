@@ -27,7 +27,7 @@ class ImageAcquisition:
         cv2.destroyAllWindows()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__": # pragma: no cover
     acquisition = ImageAcquisition()
 
     while True:

@@ -3,6 +3,7 @@ import numpy as np
 import cv2
 from prototype.FaceDetector import FaceDetector
 from prototype.FaceNetExtractor import FaceNetExtractor
+from unittest.mock import patch
 
 
 @pytest.fixture(scope="module")
@@ -61,3 +62,50 @@ def test_face_detector_invalid_input(real_detector):
 
     with pytest.raises(Exception):
         real_detector.get_face(invalid_frame)
+
+
+def test_face_detector_init_invalid_method():
+    with pytest.raises(NotImplementedError):
+        FaceDetector(method='deep_learning')
+
+@patch('cv2.CascadeClassifier.detectMultiScale')
+def test_face_detector_multiple_faces(mock_detect, real_detector):
+    img = np.zeros((480, 640, 3), dtype=np.uint8)
+    mock_detect.return_value = np.array([[10, 10, 50, 50], [100, 100, 200, 200]])
+
+    face, coords, warning = real_detector.get_face(img)
+
+    assert "Multiple faces detected" in warning
+    assert coords[2] == 200
+
+
+@patch('cv2.cvtColor')
+@patch('cv2.CascadeClassifier.detectMultiScale')
+def test_face_detector_bgr_fallback(mock_detect, mock_cvt,real_detector):
+    img = np.ones((480, 640, 3), dtype=np.uint8)
+
+    mock_detect.return_value = np.array([[0, 0, 10, 10]])
+
+    mock_cvt.side_effect = [
+        Exception("Not RGB"),
+        np.zeros((480, 640), dtype=np.uint8),
+        np.zeros((160, 160, 3), dtype=np.uint8)
+    ]
+
+    face, _, _ = real_detector.get_face(img)
+    assert face is not None
+    assert mock_cvt.call_count >= 2
+
+
+@patch('cv2.CascadeClassifier.detectMultiScale')
+def test_face_detector_single_face_success(mock_detect, real_detector):
+    img = np.zeros((480, 640, 3), dtype=np.uint8)
+
+    mock_detect.return_value = np.array([[100, 100, 50, 50]])
+
+    face, coords, warning = real_detector.get_face(img)
+
+    assert face is not None
+    assert warning is None
+    assert face.shape == (160, 160, 3)
+    assert face.max() <= 1.0
