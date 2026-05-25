@@ -1,16 +1,14 @@
-import os
-import tempfile
-import torch
 import sys
 from types import ModuleType
+import io
+import numpy as np
+import torch
 
-
+# =========================================================================
 def bulletproof_amp_decorator(*args, **kwargs):
     if args and callable(args[0]):
         return args[0]
-
     return lambda f: f
-
 
 if not hasattr(torch, 'amp'):
     mock_amp = ModuleType('amp')
@@ -19,10 +17,10 @@ if not hasattr(torch, 'amp'):
 
 torch.amp.custom_fwd = bulletproof_amp_decorator
 torch.amp.custom_bwd = bulletproof_amp_decorator
+# =========================================================================
 
-import torchaudio
+import av
 from speechbrain.inference.speaker import EncoderClassifier
-import subprocess
 
 class VoiceEmbeddingExtractor:
     def __init__(self):
@@ -32,35 +30,35 @@ class VoiceEmbeddingExtractor:
         )
 
     def describe(self, audio_bytes):
-        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as temp_webm:
-            temp_webm.write(audio_bytes)
-            webm_path = temp_webm.name
-
-        wav_path = webm_path.replace(".webm", ".wav")
-
         try:
-            subprocess.run(
-                ["ffmpeg", "-y", "-i", webm_path, "-ar", "16000", "-ac", "1", wav_path],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=True
-            )
+            audio_stream = io.BytesIO(audio_bytes)
+            container = av.open(audio_stream)
+            stream = container.streams.audio[0]
 
-            signal, fs = torchaudio.load(wav_path)
+            # Resampler w locie: format float, 1 kanał (mono), 16000 Hz
+            # Czyli dokładnie to, czego wymaga model SpeechBrain (ECAPA-TDNN)
+            resampler = av.AudioResampler(format='flt', layout='mono', rate=16000)
 
-            embedding = self.model.encode_batch(signal)
+            audio_segments = []
+
+            for packet in container.decode(stream):
+                for frame in resampler.resample(packet):
+                    audio_segments.append(frame.to_ndarray().flatten())
+
+            for frame in resampler.resample(None):
+                audio_segments.append(frame.to_ndarray().flatten())
+
+            if not audio_segments:
+                raise ValueError("Could not decode any audio frames from the provided data.")
+
+            signal_np = np.concatenate(audio_segments)
+
+            signal_tensor = torch.from_numpy(signal_np).float().unsqueeze(0)
+
+            embedding = self.model.encode_batch(signal_tensor)
             embedding_np = embedding.squeeze().cpu().numpy()
 
-        except subprocess.CalledProcessError:
-            raise RuntimeError(
-                "FFmpeg conversion failed. Make sure ffmpeg is installed in your system. "
-                "Run 'brew install ffmpeg' in your Mac terminal."
-            )
-        finally:
-            # Bezpieczne czyszczenie obu plików tymczasowych z dysku
-            if os.path.exists(webm_path):
-                os.remove(webm_path)
-            if os.path.exists(wav_path):
-                os.remove(wav_path)
+            return embedding_np
 
-        return embedding_np
+        except Exception as e:
+            raise RuntimeError(f"Voice processing error (PyAV): {e}")
