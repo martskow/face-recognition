@@ -20,12 +20,14 @@ from src.anti_spoof_predict import AntiSpoofPredict
 from src.generate_patches import CropImage
 from src.utility import parse_model_name
 
+from VoiceExtractor import VoiceEmbeddingExtractor
+
 warnings.filterwarnings('ignore')
 
 app = Flask(__name__)
 app.secret_key = 'TAI_SESSION_KEY_123'
 
-MODEL_DIR = "../prototype/resources/anti_spoof_models"
+MODEL_DIR = "prototype/resources/anti_spoof_models"
 DEVICE_ID = 0
 
 # --- DB ---
@@ -42,6 +44,8 @@ class User(db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(200), nullable=False)
     embedding_encrypted = db.Column(db.Text, nullable=False)
+    # DODANO: Kolumna na zaszyfrowany embedding głosu
+    voice_embedding_encrypted = db.Column(db.Text, nullable=True)
 
 
 with app.app_context():
@@ -55,6 +59,7 @@ cipher_suite = Fernet(ENCRYPTION_KEY)
 camera = ImageAcquisition(camera_id=0, frame_size=(640, 480))
 detector = FaceDetector(dimension=160)
 facenet = FaceNetExtractor()
+voice_extractor = VoiceEmbeddingExtractor()
 
 anti_spoof_engine = AntiSpoofPredict(DEVICE_ID)
 image_cropper = CropImage()
@@ -77,6 +82,12 @@ def base64_to_image(base64_str):
     img_bytes = base64.b64decode(base64_str.split(',')[1])
     img = Image.open(BytesIO(img_bytes)).convert('RGB')
     return np.array(img) / 255.0
+
+
+def base64_to_audio(base64_str):
+    if ',' in base64_str:
+        base64_str = base64_str.split(',')[1]
+    return base64.b64decode(base64_str)
 
 
 def is_face_distance_valid(bbox, frame_shape):
@@ -190,12 +201,23 @@ def register():
     embedding = facenet.describe(face)
     encrypted_emb = encrypt_embedding(embedding.tolist())
 
+    if 'audio' not in data:
+        return jsonify({"message": "Voice sample missing"}), 400
+
+    try:
+        audio_bytes = base64_to_audio(data['audio'])
+        voice_embedding = voice_extractor.describe(audio_bytes)
+        encrypted_voice_emb = encrypt_embedding(voice_embedding.tolist())
+    except Exception as e:
+        return jsonify({"message": f"Voice processing error: {e}"}), 400
+
     user = User(
         first_name=data['first_name'],
         last_name=data['last_name'],
         email=data['email'],
         password=generate_password_hash(data['password'], method='pbkdf2:sha256'),
-        embedding_encrypted=encrypted_emb
+        embedding_encrypted=encrypted_emb,
+        voice_embedding_encrypted=encrypted_voice_emb  # Zapis do bazy danych
     )
 
     db.session.add(user)
@@ -271,6 +293,29 @@ def login():
     if np.linalg.norm(embedding - stored) > 0.6:
         return jsonify({"message": "Face does not match biometrics"}), 401
 
+    # WERYFIKACJA LOGOWANIA
+    if 'audio' not in data:
+        return jsonify({"message": "Voice verification required"}), 400
+
+    try:
+        audio_bytes = base64_to_audio(data['audio'])
+        current_voice_emb = voice_extractor.describe(audio_bytes)
+        stored_voice_emb = decrypt_embedding(user.voice_embedding_encrypted)
+
+        # Obliczanie podobieństwa cosinusowego między wektorami
+        dot_product = np.dot(current_voice_emb, stored_voice_emb)
+        norm_current = np.linalg.norm(current_voice_emb)
+        norm_stored = np.linalg.norm(stored_voice_emb)
+
+        cosine_similarity = dot_product / (norm_current * norm_stored)
+
+        # Próg akceptacji dopasowania cech mowy (bezpieczny default: 0.45)
+        if cosine_similarity < 0.45:
+            return jsonify({"message": "Voice does not match biometrics"}), 401
+
+    except Exception as e:
+        return jsonify({"message": f"Voice verification error: {e}"}), 500
+
     session.update({
         "user_id": user.id,
         "first_name": user.first_name,
@@ -283,6 +328,6 @@ def login():
 
 if __name__ == "__main__":
     try: # pragma: no cover
-        app.run(host='0.0.0.0', port=697, debug=True) # pragma: no cover
+        app.run(host='0.0.0.0', port=697, debug=True, use_reloader = False) # pragma: no cover
     finally: # pragma: no cover
         camera.release() # pragma: no cover

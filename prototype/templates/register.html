@@ -1,36 +1,36 @@
 <!DOCTYPE html>
 <html lang="pl">
 <head>
-<link rel="icon" type="image/png" href="{{ url_for('static', filename='shield.png') }}"><meta charset="UTF-8">
-<title>Registration</title>
-<style>
-body { font-family: Arial, sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; }
-.container {margin-top:10px; display: flex; flex-direction: column; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 15px rgba(0,0,0,0.2); width: 500px; text-align: center; justify-content: center; align-items: center; }
-h1 { margin-bottom: 20px; }
-.camera-container {
-    width: 20vw;
-    height: 40vh;
-    border: 2px solid #333;
-    border-radius: 10px;
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='shield.png') }}"><meta charset="UTF-8">
+    <title>Registration</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; }
+        .container {margin-top:10px; display: flex; flex-direction: column; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 15px rgba(0,0,0,0.2); width: 500px; text-align: center; justify-content: center; align-items: center; }
+        h1 { margin-bottom: 20px; }
+        .camera-container {
+            width: 20vw;
+            height: 40vh;
+            border: 2px solid #333;
+            border-radius: 10px;
 
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-}
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
 
-.camera-container img {
-    width: 100%;
-    height: 100%;
-    object-fit: fill;
-}
-input { width: 90%; padding: 10px; margin: 5px 0; border-radius: 5px; border: 1px solid #ccc; }
-button { padding: 10px 20px; border-radius: 5px; border: none; background: #4CAF50; color: white; cursor: pointer; font-size: 16px; }
-button:hover { background: #45a049; }
-.status { margin-top: 10px; color: red; font-weight: bold; min-height: 20px; }
-.info { font-size: 14px; color: #555; margin-top: 10px; }
-.login-link { margin-top: 10px; display: block; color: #007BFF; cursor: pointer; text-decoration: underline; }
-</style>
+        .camera-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: fill;
+        }
+        input { width: 90%; padding: 10px; margin: 5px 0; border-radius: 5px; border: 1px solid #ccc; }
+        button { padding: 10px 20px; border-radius: 5px; border: none; background: #4CAF50; color: white; cursor: pointer; font-size: 16px; }
+        button:hover { background: #45a049; }
+        .status { margin-top: 10px; color: red; font-weight: bold; min-height: 20px; }
+        .info { font-size: 14px; color: #555; margin-top: 10px; }
+        .login-link { margin-top: 10px; display: block; color: #007BFF; cursor: pointer; text-decoration: underline; }
+    </style>
 </head>
 <body>
 <div class="container">
@@ -48,8 +48,8 @@ button:hover { background: #45a049; }
     <input type="text" id="email" placeholder="Email" />
     <input type="password" id="password" placeholder="Password" />
     <input type="password" id="password2" placeholder="Repeat password" />
-    <button id="registerBtn">Take a photo and register</button>
-    <div class="info">Stand straight in front of the camera, make sure your face is clearly visible, and then click the button.</div>
+    <button id="registerBtn">Register with photo and voice</button>
+    <div class="info">Stand straight in front of the camera. When recording starts, speak clearly for 3 seconds.</div>
     <div class="status" id="status"></div>
     <span class="login-link" onclick="window.location.href='/'">Go to Login page</span>
 </div>
@@ -82,51 +82,124 @@ button:hover { background: #45a049; }
         return canvas.toDataURL('image/png');
     }
 
+    registerBtn.addEventListener('click', () => {
+        const firstNameValue = document.getElementById('firstName').value;
+        const lastNameValue = document.getElementById('lastName').value;
+        const emailValue = document.getElementById('email').value;
+        const passwordValue = document.getElementById('password').value;
+        const password2Value = document.getElementById('password2').value;
 
+        if (!firstNameValue || !lastNameValue || !emailValue || !passwordValue || !password2Value) {
+            statusDiv.innerText = "Please fill in all fields.";
+            statusDiv.style.color = "red";
+            return;
+        }
 
-registerBtn.addEventListener('click', () => {
-const emailValue = document.getElementById('email').value;
+        if (passwordValue !== password2Value) {
+            statusDiv.innerText = "Passwords do not match!";
+            statusDiv.style.color = "red";
+            return;
+        }
 
+        if (!validateEmail(emailValue)) {
+            statusDiv.innerText = "Błędny format adresu e-mail!";
+            statusDiv.style.color = "red";
+            return;
+        }
 
-if (!validateEmail(emailValue)) {
-statusDiv.innerText = "Błędny format adresu e-mail!";
-statusDiv.style.color = "red";
-return; // Przerywa wysyłanie danych do serwera
-}
+        statusDiv.innerText = "Requesting microphone access...";
+        statusDiv.style.color = "orange";
 
-const data = {
-        first_name: document.getElementById('firstName').value,
-        last_name: document.getElementById('lastName').value,
-        email: emailValue,
-        password: document.getElementById('password').value,
-        password2: document.getElementById('password2').value,
-        image: getFrameBase64()
-    };
+        // Nagrywanie głosu
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(stream => {
+                const mediaRecorder = new MediaRecorder(stream);
+                const audioChunks = [];
 
-    fetch('/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-    })
-    .then(res => res.json())
-    .then(data => { statusDiv.innerText = data.message; })
-    .catch(err => { statusDiv.innerText = "Registration error"; });
-});
-function updateFaceStatus() {
-    fetch("/face_status")
-        .then(r => r.json())
-        .then(data => {
-            const el = document.getElementById("face_status");
-            if (data.face_detected) {
-                el.textContent = "Face detected";
-                el.style.color = "green";
-            } else {
-                el.textContent = "Face not detected yet";
-                el.style.color = "red";
-            }
-        });
-}
-setInterval(updateFaceStatus, 500);
+                mediaRecorder.addEventListener("dataavailable", event => {
+                    audioChunks.push(event.data);
+                });
+
+                mediaRecorder.addEventListener("stop", () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const reader = new FileReader();
+                    reader.readAsDataURL(audioBlob);
+
+                    reader.onloadend = () => {
+                        const base64Audio = reader.result;
+                        const base64Image = getFrameBase64(); // Przechwycenie klatki wideo
+
+                        statusDiv.innerText = "Processing and saving your biometric profile...";
+                        statusDiv.style.color = "blue";
+
+                        const data = {
+                            first_name: firstNameValue,
+                            last_name: lastNameValue,
+                            email: emailValue,
+                            password: passwordValue,
+                            image: base64Image,
+                            audio: base64Audio // Przesłanie próby audio
+                        };
+
+                        fetch('/register', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(data)
+                        })
+                            .then(res => {
+                                return res.json().then(data => {
+                                    if (!res.ok) throw new Error(data.message || "Registration error");
+                                    return data;
+                                });
+                            })
+                            .then(data => {
+                                statusDiv.innerText = data.message;
+                                statusDiv.style.color = "green";
+
+                                // Przekierowanie do logowania po udanej rejestracji
+                                setTimeout(() => {
+                                    window.location.href = '/';
+                                }, 2000);
+                            })
+                            .catch(err => {
+                                statusDiv.innerText = err.message;
+                                statusDiv.style.color = "red";
+                            });
+                    };
+                });
+
+                // Rozpoczęcie zbierania audio na 3 sekundy
+                mediaRecorder.start();
+                statusDiv.innerText = "Recording voice... Please speak now (3s).";
+                statusDiv.style.color = "purple";
+
+                setTimeout(() => {
+                    mediaRecorder.stop();
+                    stream.getTracks().forEach(track => track.stop()); // Zamknięcie strumienia mikrofonu
+                }, 3000);
+
+            })
+            .catch(err => {
+                statusDiv.innerText = "Microphone error: " + err.message;
+                statusDiv.style.color = "red";
+            });
+    });
+
+    function updateFaceStatus() {
+        fetch("/face_status")
+            .then(r => r.json())
+            .then(data => {
+                const el = document.getElementById("face_status");
+                if (data.face_detected) {
+                    el.textContent = "Face detected";
+                    el.style.color = "green";
+                } else {
+                    el.textContent = "Face not detected yet";
+                    el.style.color = "red";
+                }
+            });
+    }
+    setInterval(updateFaceStatus, 500);
 </script>
 
 </body>
