@@ -4,24 +4,150 @@
   <meta charset="UTF-8">
   <title>Panel Użytkownika</title>
   <style>
-    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-    .card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.1); width: 350px; text-align: center; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
+    .card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.1); width: 100%; max-width: 550px; text-align: center; box-sizing: border-box; }
     .avatar { background: #4CAF50; color: white; width: 80px; height: 80px; line-height: 80px; border-radius: 50%; font-size: 40px; margin: 0 auto 20px; }
     h2 { margin: 10px 0; color: #333; }
     p { color: #666; font-size: 14px; margin: 5px 0; }
-    .status-badge { display: inline-block; background: #e8f5e9; color: #2e7d32; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; margin-top: 15px; }
-    .logout-btn { display: block; margin-top: 25px; text-decoration: none; color: #d32f2f; font-weight: bold; border: 1px solid #d32f2f; padding: 10px; border-radius: 6px; transition: 0.3s; }
+    .status-badge { display: inline-block; background: #e8f5e9; color: #2e7d32; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; margin-top: 5px; }
+
+    /* STYLE ZAKŁADEK (TABS) */
+    .tabs-nav { display: flex; justify-content: space-around; margin: 25px 0 15px; border-bottom: 2px solid #f0f2f5; }
+    .tab-btn { background: none; border: none; padding: 10px; font-weight: bold; color: #888; cursor: pointer; border-bottom: 2px solid transparent; transition: 0.3s; font-size: 14px; }
+    .tab-btn:hover { color: #4CAF50; }
+    .tab-btn.active { color: #4CAF50; border-bottom: 2px solid #4CAF50; }
+    .tab-content { display: none; text-align: left; padding: 15px 0; }
+    .tab-content.active { display: block; }
+
+    /* FORMULARZE I ELEMENTY PANELU */
+    .form-group { margin-bottom: 15px; text-align: left; }
+    .form-group label { display: block; font-size: 13px; color: #555; margin-bottom: 5px; font-weight: 600; }
+    .form-group input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 14px; }
+
+    .btn-action { width: 100%; background: #4CAF50; color: white; border: none; padding: 12px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.3s; margin-top: 10px; font-size: 14px; }
+    .btn-action:hover { background: #45a049; }
+    .btn-secondary { background: #007BFF; }
+    .btn-secondary:hover { background: #0056b3; }
+
+    /* MULTIMEDIA */
+    video { background: #333; width: 100%; border-radius: 8px; margin-top: 10px; transform: scaleX(-1); /* Efekt lustra dla kamery */ }
+
+    /* TABELA HISTORII */
+    .table-container { max-height: 200px; overflow-y: auto; margin-top: 10px; border: 1px solid #ddd; border-radius: 6px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
+    th { background: #f8f9fa; position: sticky; top: 0; color: #333; }
+
+    .status-success { color: #2e7d32; font-weight: bold; }
+    .status-failed { color: #c62828; font-weight: bold; }
+
+    .logout-btn { display: block; margin-top: 25px; text-decoration: none; color: #d32f2f; font-weight: bold; border: 1px solid #d32f2f; padding: 10px; border-radius: 6px; transition: 0.3s; font-size: 14px; }
     .logout-btn:hover { background: #d32f2f; color: white; }
+    .admin-btn { display: block; margin-top: 10px; text-decoration: none; color: #2e7d32; font-weight: bold; border: 1px solid #2e7d32; padding: 10px; border-radius: 6px; transition: 0.3s; font-size: 14px; background: #e8f5e9; }
+    .admin-btn:hover { background: #2e7d32; color: white; }
+
+    .api-status { font-size: 13px; font-weight: bold; text-align: center; margin-top: 10px; }
   </style>
 </head>
 <body>
 <div class="card">
   <div class="avatar">{{ user.first_name[0] }}</div>
-  <h2>Hello, {{ user.first_name }}!</h2>
+  <h2>Hello, <span id="user-display-name">{{ user.first_name }}</span>!</h2>
   <p>{{ user.first_name }} {{ user.last_name }}</p>
   <p>{{ user.email }}</p>
   <div class="status-badge">Verification: Passed</div>
+
+  <div class="tabs-nav">
+    <button class="tab-btn active" onclick="switchTab('profile')">Profil</button>
+    <button class="tab-btn" onclick="switchTab('biometrics')">Biometria</button>
+    <button class="tab-btn" onclick="switchTab('history')">Historia</button>
+  </div>
+
+  <div id="tab-profile" class="tab-content active">
+    <div class="form-group">
+      <label for="edit-firstname">Imię</label>
+      <input type="text" id="edit-firstname" value="{{ user.first_name }}">
+    </div>
+    <div class="form-group">
+      <label for="edit-lastname">Nazwisko</label>
+      <input type="text" id="edit-lastname" value="{{ user.last_name }}">
+    </div>
+    <div class="form-group">
+      <label for="edit-password">Nowe hasło (opcjonalnie)</label>
+      <input type="password" id="edit-password" placeholder="Min. 8 znaków jeśli zmieniasz">
+    </div>
+    <button class="btn-action" onclick="updateProfile()">Zapisz zmiany danych</button>
+    <p id="profile-status" class="api-status"></p>
+  </div>
+
+  <div id="tab-biometrics" class="tab-content">
+    <p style="font-size: 13px; color:#666; margin-bottom: 15px; text-align: center;">
+      Wybierz, który wzorzec biometryczny chcesz zaktualizować w bazie danych:
+    </p>
+
+    <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; margin-bottom: 15px; background: #fafafa; display: flex; flex-direction: column; align-items: center;">
+      <h4 style="margin: 0 0 10px 0; color: #333; width: 100%;">Aktualizacja Twarzy</h4>
+
+      <div style="width: 250px; height: 250px; border: 2px solid #333; border-radius: 10px; overflow: hidden; margin-bottom: 10px;">
+          <img id="biometricsVideoFeed" style="width: 100%; height: 100%; object-fit: fill;" alt="Strumień wideo" />
+      </div>
+
+      <div id="biometrics_face_status" style="font-size:16px; font-weight:bold; margin-bottom: 10px;">
+          Czekam na uruchomienie kamery...
+      </div>
+
+      <button type="button" class="btn-action" onclick="reinitFaceOnly()">Zaktualizuj samą Twarz</button>
+    </div>
+
+    <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; background: #fafafa;">
+      <h4 style="margin: 0 0 10px 0; color: #333;">Aktualizacja Głosu</h4>
+      <p style="font-size: 12px; color: #555; margin-bottom: 10px;">Kliknij przycisk poniżej, system automatycznie nagra 3 sekundy Twojego głosu:</p>
+      <button type="button" id="voiceBtn" class="btn-action" style="background: #a040a0;" onclick="reinitVoiceWithRecording()">Nagraj i zaktualizuj Głos</button>
+    </div>
+
+    <p id="biometrics-status" class="api-status" style="margin-top: 15px; font-weight: bold; text-align: center;"></p>
+  </div>
+
+  <div id="tab-history" class="tab-content">
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>Data (UTC)</th>
+            <th>Adres IP</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="history-table-body">
+          </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% if user.is_admin %}
+    <a href="/admin/panel" class="admin-btn">Panel Administratora</a>
+  {% endif %}
   <a href="/logout" class="logout-btn">Logout</a>
 </div>
+
+<script src="{{ url_for('static', filename='main.js') }}"></script>
+<script>
+  // Przełączanie widoku zakładek
+  function switchTab(tabName) {
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+      event.target.classList.add('active');
+      document.getElementById(`tab-${tabName}`).classList.add('active');
+
+      // Jeśli kliknięto historię, odśwież dane z bazy
+      if (tabName === 'history') {
+          loadLoginHistory();
+      }
+  }
+
+  // Załaduj historię również profilaktycznie przy startowym renderowaniu
+  document.addEventListener("DOMContentLoaded", loadLoginHistory);
+</script>
 </body>
 </html>

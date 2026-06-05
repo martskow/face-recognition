@@ -7,6 +7,9 @@ import warnings
 from io import BytesIO
 from PIL import Image
 import re
+from datetime import datetime
+import base64
+
 
 from flask import Flask, Response, jsonify, render_template, request, session, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
@@ -46,6 +49,20 @@ class User(db.Model):
     embedding_encrypted = db.Column(db.Text, nullable=False)
     # DODANO: Kolumna na zaszyfrowany embedding głosu
     voice_embedding_encrypted = db.Column(db.Text, nullable=True)
+
+
+class LoginHistory(db.Model):
+    __tablename__ = 'login_history'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    ip_address = db.Column(db.String(45), nullable=True)
+    status = db.Column(db.String(50),
+                       nullable=False)  # np. "Success", "Failed: Face mismatch", "Failed: Voice mismatch"
+
+    # Opcjonalnie relacja, żeby łatwo wyciągać dane użytkownika
+    user = db.relationship('User', backref=db.backref('login_histories', lazy=True))
 
 
 with app.app_context():
@@ -229,32 +246,51 @@ def register():
 @app.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
-    user = User.query.filter_by(email=data.get('email')).first()
+    email = data.get('email')
+    user = User.query.filter_by(email=email).first()
 
+    # Pomocnicza funkcja do szybkiego zapisywania nieudanych prób
+    def log_failed_attempt(user_obj, error_msg):
+        if user_obj: # Logujemy tylko, jeśli użytkownik istnieje w bazie
+            try:
+                failed_log = LoginHistory(
+                    user_id=user_obj.id,
+                    ip_address=request.remote_addr,
+                    status=f"Failed ({error_msg})"
+                )
+                db.session.add(failed_log)
+                db.session.commit()
+            except Exception as e:
+                print(f"Błąd zapisu historii logowania: {e}")
+
+    # 1. BŁĄD: Zły mail lub hasło (Kod 400)
     if not user or not check_password_hash(user.password, data.get('password')):
+        log_failed_attempt(user, "400: Wrong credentials")
         return jsonify({"message": "Wrong email or password"}), 400
 
     frame = camera.get_frame()
     if frame is None:
+        log_failed_attempt(user, "500: Camera error")
         return jsonify({"message": "Camera access error"}), 500
 
     frame_cv2 = cv2.cvtColor((frame * 255).astype(np.uint8), cv2.COLOR_RGB2BGR)
     face, coords, _ = detector.get_face(frame)
 
+    # 2. BŁĄD: Nie wykryto twarzy (Kod 400)
     if face is None:
+        log_failed_attempt(user, "400: Face not detected")
         return jsonify({"message": "Face not detected"}), 400
 
     valid, ratio = is_face_distance_valid(coords, frame.shape)
 
+    # 3. BŁĄD: Twarz za blisko / za daleko (Kod 400)
     if not valid:
         if ratio > MAX_FACE_AREA_RATIO:
-            return jsonify({
-                "message": "Face too close to camera"
-            }), 400
+            log_failed_attempt(user, "400: Face too close")
+            return jsonify({"message": "Face too close to camera"}), 400
         else:
-            return jsonify({
-                "message": "Face too far from camera"
-            }), 400
+            log_failed_attempt(user, "400: Face too far")
+            return jsonify({"message": "Face too far from camera"}), 400
 
     prediction = np.zeros((1, 3))
 
@@ -278,23 +314,26 @@ def login():
         label = np.argmax(prediction)
         score = prediction[0][label] / 2
 
+        # 4. BŁĄD: Atak prezentacji / Spoofing (Kod 403)
         if label != 1:
-            return jsonify({
-                "message": "Spoofing detected",
-                "score": float(score)
-            }), 403
+            log_failed_attempt(user, "403: Spoofing detected")
+            return jsonify({"message": "Spoofing detected", "score": float(score)}), 403
 
     except Exception as e:
+        log_failed_attempt(user, "500: Anti-spoofing crash")
         return jsonify({"message": f"Anti-spoofing error: {e}"}), 500
 
     embedding = facenet.describe(face)
     stored = decrypt_embedding(user.embedding_encrypted)
 
+    # 5. BŁĄD: Niedopasowanie biometrii twarzy (Kod 401)
     if np.linalg.norm(embedding - stored) > 0.6:
+        log_failed_attempt(user, "401: Face mismatch")
         return jsonify({"message": "Face does not match biometrics"}), 401
 
-    # WERYFIKACJA LOGOWANIA
+    # 6. BŁĄD: Brak przesłanego audio (Kod 400)
     if 'audio' not in data:
+        log_failed_attempt(user, "400: Audio missing")
         return jsonify({"message": "Voice verification required"}), 400
 
     try:
@@ -302,19 +341,32 @@ def login():
         current_voice_emb = voice_extractor.describe(audio_bytes)
         stored_voice_emb = decrypt_embedding(user.voice_embedding_encrypted)
 
-        # Obliczanie podobieństwa cosinusowego między wektorami
         dot_product = np.dot(current_voice_emb, stored_voice_emb)
         norm_current = np.linalg.norm(current_voice_emb)
         norm_stored = np.linalg.norm(stored_voice_emb)
 
         cosine_similarity = dot_product / (norm_current * norm_stored)
 
-        # Próg akceptacji dopasowania cech mowy (bezpieczny default: 0.45)
+        # 7. BŁĄD: Niedopasowanie głosu (Kod 401)
         if cosine_similarity < 0.45:
+            log_failed_attempt(user, "401: Voice mismatch")
             return jsonify({"message": "Voice does not match biometrics"}), 401
 
     except Exception as e:
+        log_failed_attempt(user, "500: Voice engine crash")
         return jsonify({"message": f"Voice verification error: {e}"}), 500
+
+    # === SUKCES: UDANE LOGOWANIE ===
+    try:
+        success_log = LoginHistory(
+            user_id=user.id,
+            ip_address=request.remote_addr,
+            status="Passed"
+        )
+        db.session.add(success_log)
+        db.session.commit()
+    except Exception as e:
+        print(f"Błąd zapisu historii logowania: {e}")
 
     session.update({
         "user_id": user.id,
@@ -324,6 +376,153 @@ def login():
     })
 
     return jsonify({"message": "Login successful", "redirect": url_for('dashboard')})
+
+
+
+# ENDPOINTY DLA Z3 (UŻYTKOWNIK)
+
+@app.route('/api/user/profile', methods=['PUT'])
+def update_profile():
+    # Pobieramy ID zalogowanego użytkownika z sesji Flaska
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({"message": "Brak autoryzacji. Zaloguj się ponownie."}), 41
+
+    data = request.get_json()
+    user = User.query.get(user_id)
+
+    if not user:
+        return jsonify({"message": "Użytkownik nie istnieje."}), 404
+
+    # Aktualizacja danych podstawowych
+    if data.get('first_name'):
+        user.first_name = data.get('first_name')
+    if data.get('last_name'):
+        user.last_name = data.get('last_name')
+
+    # Aktualizacja hasła
+    password = data.get('password')
+    if password and len(password) >= 8:
+        from werkzeug.security import generate_password_hash
+        user.password = generate_password_hash(password)
+    elif password and len(password) < 8:
+        return jsonify({"message": "Hasło musi mieć minimum 8 znaków!"}), 400
+
+    db.session.commit()
+    return jsonify({"message": "Profil zaktualizowany pomyślnie!"})
+
+
+@app.route('/api/user/history', methods=['GET'])
+def get_user_history():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({"message": "Brak autoryzacji."}), 401
+
+    history_records = LoginHistory.query.filter_by(user_id=user_id).order_by(LoginHistory.timestamp.desc()).all()
+
+    history_list = []
+    for record in history_records:
+        history_list.append({
+            # formatowanie daty do czytelnego stringa
+            "timestamp": record.timestamp.strftime('%Y-%m-%d %H:%M:%S') if isinstance(record.timestamp,
+                                                                                      datetime) else str(
+                record.timestamp),
+            "ip": record.ip_address if hasattr(record, 'ip_address') else getattr(record, 'ip', 'Nieznane'),
+            "status": record.status
+        })
+
+    return jsonify(history_list)
+
+
+def base64_to_cv2_img(base64_string):
+    try:
+        if "base64," in base64_string:
+            base64_string = base64_string.split("base64,")[1]
+        img_data = base64.b64decode(base64_string)
+        nparr = np.frombuffer(img_data, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        return img
+    except Exception as e:
+        print(f"Błąd dekodowania obrazu Base64: {e}")
+        return None
+
+
+@app.route('/api/user/reinit_biometrics', methods=['POST'])
+def reinit_biometrics():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({"message": "Brak autoryzacji. Zaloguj się ponownie."}), 401
+
+    data = request.get_json()
+    user = User.query.get(user_id)
+
+    if not user:
+        return jsonify({"message": "Użytkownik nie istnieje."}), 404
+
+    image_base64 = data.get('image')
+    audio_base64 = data.get('audio')
+
+    updated_parts = []
+
+    try:
+        # === 1. AKTUALIZACJA TWARZY ===
+        if image_base64:
+            frame_cv2 = base64_to_cv2_img(image_base64)
+            if frame_cv2 is not None:
+                frame_rgb = cv2.cvtColor(frame_cv2, cv2.COLOR_BGR2RGB)
+
+                # Pobranie wyciętej twarzy z detektora
+                face, coords, _ = detector.get_face(frame_rgb)
+                if face is not None:
+                    # Generowanie wektora (zwraca ndarray z FaceNetExtractor)
+                    new_embedding = facenet.describe(face)
+
+                    # !!! KLUCZOWE ZABEZPIECZENIE !!!
+                    # Konwertujemy ndarray na standardową listę Pythona, aby zapobiec błędowi serializacji
+                    if isinstance(new_embedding, np.ndarray):
+                        new_embedding = new_embedding.tolist()
+
+                    # Szyfrujemy już czystą listę / bezpieczny obiekt
+                    user.embedding_encrypted = encrypt_embedding(new_embedding)
+                    updated_parts.append("Twarz")
+                else:
+                    return jsonify({"message": "Nie wykryto twarzy na przesłanym zdjęciu. Ustaw się prosto."}), 400
+            else:
+                return jsonify({"message": "Błąd przetwarzania pliku graficznego."}), 400
+
+        # === 2. AKTUALIZACJA GŁOSU ===
+        if audio_base64:
+            audio_bytes = base64_to_audio(audio_base64)
+            new_voice_emb = voice_extractor.describe(audio_bytes)
+
+            # !!! KLUCZOWE ZABEZPIECZENIE DLA GŁOSU !!!
+            if isinstance(new_voice_emb, np.ndarray):
+                new_voice_emb = new_voice_emb.tolist()
+
+            user.voice_embedding_encrypted = encrypt_embedding(new_voice_emb)
+            updated_parts.append("Glos")
+
+        # === 3. WALIDACJA I ZAPIS ZDARZENIA ===
+        if not updated_parts:
+            return jsonify({"message": "Nie otrzymano danych biometrycznych."}), 400
+
+        status_msg = f"Aktualizacja biometrii ({', '.join(updated_parts)})"
+
+        biometric_log = LoginHistory(
+            user_id=user.id,
+            ip_address=request.remote_addr,
+            status=status_msg
+        )
+
+        db.session.add(biometric_log)
+        db.session.commit()
+
+        # Przekazujemy czysty string w odpowiedzi
+        return jsonify({"message": f"Pomyślnie zaktualizowano wzorce biometryczne: {str(status_msg)}"})
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"message": f"Błąd aktualizacji biometrii: {str(e)}"}), 500
 
 
 if __name__ == "__main__":
