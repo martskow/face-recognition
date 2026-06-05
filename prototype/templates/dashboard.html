@@ -24,13 +24,25 @@
     .form-group label { display: block; font-size: 13px; color: #555; margin-bottom: 5px; font-weight: 600; }
     .form-group input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 14px; }
 
+    /* SEKCJA DLA MFA Z ELEGANCKIM SUWAKIEM */
+    .mfa-section { background: #f8f9fa; border: 1px solid #e1e4e8; padding: 18px; border-radius: 8px; margin-bottom: 25px; text-align: left; }
+    .mfa-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .mfa-section h3 { margin: 0; font-size: 16px; color: #333; }
+    .mfa-desc { margin: 0; font-size: 12px; color: #666; line-height: 1.4; }
+
+    /* --- NOWE STYLE CSS DLA SWICHA/SUWAKA --- */
+    .switch { position: relative; display: inline-block; width: 46px; height: 24px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .3s; border-radius: 24px; }
+    .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .3s; border-radius: 50%; }
+    input:checked + .slider { background-color: #4CAF50; }
+    input:checked + .slider:before { transform: translateX(22px); }
+
     .btn-action { width: 100%; background: #4CAF50; color: white; border: none; padding: 12px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.3s; margin-top: 10px; font-size: 14px; }
     .btn-action:hover { background: #45a049; }
-    .btn-secondary { background: #007BFF; }
-    .btn-secondary:hover { background: #0056b3; }
 
     /* MULTIMEDIA */
-    video { background: #333; width: 100%; border-radius: 8px; margin-top: 10px; transform: scaleX(-1); /* Efekt lustra dla kamery */ }
+    video { background: #333; width: 100%; border-radius: 8px; margin-top: 10px; transform: scaleX(-1); }
 
     /* TABELA HISTORII */
     .table-container { max-height: 200px; overflow-y: auto; margin-top: 10px; border: 1px solid #ddd; border-radius: 6px; }
@@ -41,9 +53,9 @@
     .status-success { color: #2e7d32; font-weight: bold; }
     .status-failed { color: #c62828; font-weight: bold; }
 
-    .logout-btn { display: block; margin-top: 25px; text-decoration: none; color: #d32f2f; font-weight: bold; border: 1px solid #d32f2f; padding: 10px; border-radius: 6px; transition: 0.3s; font-size: 14px; }
+    .logout-btn { display: block; margin-top: 25px; text-decoration: none; color: #d32f2f; font-weight: bold; border: 1px solid #d32f2f; padding: 10px; border-radius: 6px; transition: 0.3s; font-size: 14px; text-align: center; }
     .logout-btn:hover { background: #d32f2f; color: white; }
-    .admin-btn { display: block; margin-top: 10px; text-decoration: none; color: #2e7d32; font-weight: bold; border: 1px solid #2e7d32; padding: 10px; border-radius: 6px; transition: 0.3s; font-size: 14px; background: #e8f5e9; }
+    .admin-btn { display: block; margin-top: 10px; text-decoration: none; color: #2e7d32; font-weight: bold; border: 1px solid #2e7d32; padding: 10px; border-radius: 6px; transition: 0.3s; font-size: 14px; background: #e8f5e9; text-align: center; }
     .admin-btn:hover { background: #2e7d32; color: white; }
 
     .api-status { font-size: 13px; font-weight: bold; text-align: center; margin-top: 10px; }
@@ -64,6 +76,20 @@
   </div>
 
   <div id="tab-profile" class="tab-content active">
+
+    <div class="mfa-section">
+      <div class="mfa-header-row">
+        <h3>🔒 Autoryzacja dwuskładnikowa (Głos)</h3>
+        <label class="switch">
+          <input type="checkbox" id="voice-auth-toggle" {% if user.require_voice_auth %} checked {% endif %} onchange="toggleVoiceMFA()">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <p class="mfa-desc">
+        Włącza dodatkową weryfikację barwy głosu podczas logowania. Gdy wyłączone, system autoryzuje Cię wyłącznie na podstawie zdjęcia twarzy.
+      </p>
+    </div>
+
     <div class="form-group">
       <label for="edit-firstname">Imię</label>
       <input type="text" id="edit-firstname" value="{{ user.first_name }}">
@@ -87,15 +113,12 @@
 
     <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px; margin-bottom: 15px; background: #fafafa; display: flex; flex-direction: column; align-items: center;">
       <h4 style="margin: 0 0 10px 0; color: #333; width: 100%;">Aktualizacja Twarzy</h4>
-
       <div style="width: 250px; height: 250px; border: 2px solid #333; border-radius: 10px; overflow: hidden; margin-bottom: 10px;">
           <img id="biometricsVideoFeed" style="width: 100%; height: 100%; object-fit: fill;" alt="Strumień wideo" />
       </div>
-
       <div id="biometrics_face_status" style="font-size:16px; font-weight:bold; margin-bottom: 10px;">
           Czekam na uruchomienie kamery...
       </div>
-
       <button type="button" class="btn-action" onclick="reinitFaceOnly()">Zaktualizuj samą Twarz</button>
     </div>
 
@@ -104,7 +127,6 @@
       <p style="font-size: 12px; color: #555; margin-bottom: 10px;">Kliknij przycisk poniżej, system automatycznie nagra 3 sekundy Twojego głosu:</p>
       <button type="button" id="voiceBtn" class="btn-action" style="background: #a040a0;" onclick="reinitVoiceWithRecording()">Nagraj i zaktualizuj Głos</button>
     </div>
-
     <p id="biometrics-status" class="api-status" style="margin-top: 15px; font-weight: bold; text-align: center;"></p>
   </div>
 
@@ -132,6 +154,21 @@
 
 <script src="{{ url_for('static', filename='main.js') }}"></script>
 <script>
+  // Funkcja skryptowa obsługująca żądanie zmiany flagi MFA
+  function toggleVoiceMFA() {
+      fetch('/api/user/toggle-voice', { method: 'POST' })
+      .then(res => res.json())
+      .then(data => {
+          // Komunikat o sukcesie (możesz też wykomentować alert, by zmiana była bezszelestna)
+          console.log(data.message);
+      })
+      .catch(err => {
+          alert("Błąd podczas zmiany ustawień biometrii.");
+          const cb = document.getElementById('voice-auth-toggle');
+          cb.checked = !cb.checked; // Cofnięcie suwaka w razie błędu sieci
+      });
+  }
+
   // Przełączanie widoku zakładek
   function switchTab(tabName) {
       document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
@@ -140,13 +177,11 @@
       event.target.classList.add('active');
       document.getElementById(`tab-${tabName}`).classList.add('active');
 
-      // Jeśli kliknięto historię, odśwież dane z bazy
       if (tabName === 'history') {
           loadLoginHistory();
       }
   }
 
-  // Załaduj historię również profilaktycznie przy startowym renderowaniu
   document.addEventListener("DOMContentLoaded", loadLoginHistory);
 </script>
 </body>

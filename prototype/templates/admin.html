@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <title>Panel Administratora</title>
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; box-sizing: border-box; }
+    .container { max-width: 900px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+    h2, h3 { color: #333; margin-top: 0; }
+    .section { border: 1px solid #ddd; padding: 20px; border-radius: 8px; margin-bottom: 25px; background: #fafafa; }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+    th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+    th { background: #eef2f3; font-weight: bold; color: #444; }
+
+    .btn { padding: 8px 14px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 13px; margin-right: 5px; transition: 0.2s; }
+    .btn-block { background: #ff9800; color: white; }
+    .btn-block:hover { background: #e68a00; }
+    .btn-delete { background: #f44336; color: white; }
+    .btn-delete:hover { background: #d32f2f; }
+    .btn-save { background: #4CAF50; color: white; padding: 10px 20px; font-size: 14px; }
+    .btn-save:hover { background: #45a049; }
+    .btn-back { display: inline-block; text-decoration: none; background: #607d8b; color: white; padding: 10px 15px; border-radius: 6px; font-weight: bold; margin-bottom: 20px; transition: 0.2s; }
+    .btn-back:hover { background: #4f6672; }
+
+    .form-group { margin-bottom: 15px; }
+    .form-group label { display: block; font-size: 13px; font-weight: bold; margin-bottom: 5px; color: #555; }
+    .form-group input { width: 150px; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+    .status-msg { font-weight: bold; margin-top: 10px; font-size: 14px; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <a href="/" class="btn-back">← Powrót do Panelu Użytkownika</a>
+  <h2>🛡️ Centralny Moduł Zarządzania Systemem</h2>
+  <p style="color: #666; margin-bottom: 20px;">Zalogowany z uprawnieniami roli: <span style="color:#2e7d32; font-weight:bold;">Globalny Administrator</span></p>
+
+  <div class="section">
+    <h3>⚙️ Konfiguracja Parametrów Algorytmów Biometrycznych</h3>
+    <div class="form-group">
+      <label for="cfg-face">Próg dopasowania twarzy (Odległość Euklidesowa - FaceNet):</label>
+      <input type="number" step="0.01" id="cfg-face" value="{{ config.face_threshold }}">
+      <small style="color:#777; display:block; margin-top:2px;">Mniejsza wartość = czulsza weryfikacja (mniejsza tolerancja na zmiany w wyglądzie).</small>
+    </div>
+    <div class="form-group">
+      <label for="cfg-voice">Próg dopasowania głosu (Podobieństwo Cosinusowe):</label>
+      <input type="number" step="0.01" id="cfg-voice" value="{{ config.voice_threshold }}">
+      <small style="color:#777; display:block; margin-top:2px;">Większa wartość = system wymaga bardziej zbliżonej barwy głosu.</small>
+    </div>
+    <button class="btn btn-save" onclick="saveGlobalConfig()">Zapisz parametry globalne</button>
+    <div id="config-status" class="status-msg"></div>
+  </div>
+
+  <div class="section">
+    <h3>👥 Zarządzanie Kontami i Statusami Użytkowników</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Imię i Nazwisko</th>
+          <th>Adres Email</th>
+          <th>Status konta</th>
+          <th>Dostępne akcje</th>
+        </tr>
+      </thead>
+      <tbody id="admin-users-table">
+        </tbody>
+    </table>
+    <div id="users-status" class="status-msg"></div>
+  </div>
+</div>
+
+<script>
+  // Wywołanie ładowania listy użytkowników od razu po wejściu na stronę
+  document.addEventListener("DOMContentLoaded", loadUsersList);
+
+  function loadUsersList() {
+    const tableBody = document.getElementById('admin-users-table');
+    tableBody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#666;">Ładowanie danych z bazy systemu...</td></tr>';
+
+    fetch('/api/admin/users')
+      .then(res => {
+          if(!res.ok) throw new Error("Brak autoryzacji do odczytu bazy kont.");
+          return res.json();
+      })
+      .then(users => {
+        tableBody.innerHTML = '';
+        if(users.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Brak zarejestrowanych kont.</td></tr>';
+            return;
+        }
+
+        users.forEach(u => {
+          const tr = document.createElement('tr');
+          const statusText = u.is_active ? '<span style="color:green; font-weight:bold;">Aktywne</span>' : '<span style="color:red; font-weight:bold;">Zablokowane</span>';
+          const blockBtnText = u.is_active ? 'Zablokuj konto' : 'Odblokuj konto';
+
+          tr.innerHTML = `
+            <td>${u.id}</td>
+            <td>${u.first_name} ${u.last_name}</td>
+            <td>${u.email} ${u.is_admin ? '<b style="color:#007BFF;">(Admin)</b>' : ''}</td>
+            <td>${statusText}</td>
+            <td>
+              <button class="btn btn-block" onclick="toggleUser(${u.id})">${blockBtnText}</button>
+              <button class="btn btn-delete" onclick="deleteUser(${u.id})">Usuń trwale</button>
+            </td>
+          `;
+          tableBody.appendChild(tr);
+        });
+      })
+      .catch(err => {
+        document.getElementById('users-status').innerText = err.message;
+        document.getElementById('users-status').style.color = "red";
+      });
+  }
+
+  function toggleUser(userId) {
+    fetch(`/api/admin/users/${userId}/toggle`, { method: 'POST' })
+      .then(res => res.json())
+      .then(data => {
+          alert(data.message);
+          loadUsersList();
+      }).catch(err => alert("Błąd zmiany stanu konta."));
+  }
+
+  function deleteUser(userId) {
+    if (confirm("Krytyczna decyzja: Czy na pewno chcesz całkowicie usunąć tego użytkownika wraz z jego wzorcami biometrycznymi?")) {
+      fetch(`/api/admin/users/${userId}`, { method: 'DELETE' })
+        .then(res => res.json())
+        .then(data => {
+            alert(data.message);
+            loadUsersList();
+        }).catch(err => alert("Błąd usuwania użytkownika."));
+    }
+  }
+
+  function saveGlobalConfig() {
+    const faceTh = document.getElementById('cfg-face').value;
+    const voiceTh = document.getElementById('cfg-voice').value;
+    const statusDiv = document.getElementById('config-status');
+
+    fetch('/api/admin/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ face_threshold: faceTh, voice_threshold: voiceTh })
+    })
+    .then(res => res.json())
+    .then(data => {
+      statusDiv.innerText = data.message;
+      statusDiv.style.color = "green";
+      setTimeout(() => statusDiv.innerText = "", 3000);
+    })
+    .catch(err => {
+      statusDiv.innerText = "Błąd zapisu parametrów konfiguracji.";
+      statusDiv.style.color = "red";
+    });
+  }
+</script>
+</body>
+</html>

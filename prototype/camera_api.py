@@ -47,8 +47,12 @@ class User(db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(200), nullable=False)
     embedding_encrypted = db.Column(db.Text, nullable=False)
-    # DODANO: Kolumna na zaszyfrowany embedding głosu
     voice_embedding_encrypted = db.Column(db.Text, nullable=True)
+
+    is_admin = db.Column(db.Boolean, default=False)
+    is_active = db.Column(db.Boolean, default=True)
+
+    require_voice_auth = db.Column(db.Boolean, default=True)
 
 
 class LoginHistory(db.Model):
@@ -178,9 +182,13 @@ def register_view():
 
 @app.route('/dashboard')
 def dashboard():
-    if 'user_id' not in session:
-        return redirect(url_for('login_view'))
-    return render_template('dashboard.html', user=session)
+    user_id = session.get('user_id')
+    if not user_id:
+        return redirect(url_for('login'))
+
+    current_user = User.query.get(user_id)
+
+    return render_template('dashboard.html', user=current_user)
 
 
 @app.route('/logout')
@@ -243,6 +251,29 @@ def register():
     return jsonify({"message": "Registration successful!"})
 
 
+@app.route('/api/login-check', methods=['POST'])
+def login_check():
+    data = request.get_json()
+    email = data.get('email')
+    password = data.get('password')
+
+    user = User.query.filter_by(email=email).first()
+
+    # Podstawowa weryfikacja danych, żeby nie zdradzać konfiguracji losowym osobom
+    if not user or not check_password_hash(user.password, password):
+        return jsonify({"valid": False, "message": "Wrong email or password"}), 400
+
+    # Sprawdzamy też blokadę konta z panelu admina
+    if not getattr(user, 'is_active', True):
+        return jsonify(
+            {"valid": False, "message": "Twoje konto zostało zablokowane przez administratora systemu!"}), 403
+
+    return jsonify({
+        "valid": True,
+        "require_voice": getattr(user, 'require_voice_auth', True)
+    })
+
+
 @app.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
@@ -267,6 +298,16 @@ def login():
     if not user or not check_password_hash(user.password, data.get('password')):
         log_failed_attempt(user, "400: Wrong credentials")
         return jsonify({"message": "Wrong email or password"}), 400
+
+    # === DODATEK ADMINA 1: KONTROLA BLOKADY KONTA ===
+    if not getattr(user, 'is_active', True):
+        log_failed_attempt(user, "403: Account suspended by administrator")
+        return jsonify({"message": "Twoje konto zostalo zablokowane przez administratora systemu!"}), 403
+
+    # === DODATEK ADMINA 2: DYNAMICZNE POBIERANIE PROGÓW CZUŁOŚCI ===
+    config = SystemConfig.query.first()
+    face_th = config.face_threshold if config else 0.6
+    voice_th = config.voice_threshold if config else 0.45
 
     frame = camera.get_frame()
     if frame is None:
@@ -326,35 +367,40 @@ def login():
     embedding = facenet.describe(face)
     stored = decrypt_embedding(user.embedding_encrypted)
 
-    # 5. BŁĄD: Niedopasowanie biometrii twarzy (Kod 401)
-    if np.linalg.norm(embedding - stored) > 0.6:
+    # 5. BŁĄD: Niedopasowanie biometrii twarzy (Używa zmiennej dynamicznej face_th)
+    if np.linalg.norm(embedding - stored) > face_th:
         log_failed_attempt(user, "401: Face mismatch")
         return jsonify({"message": "Face does not match biometrics"}), 401
 
-    # 6. BŁĄD: Brak przesłanego audio (Kod 400)
-    if 'audio' not in data:
-        log_failed_attempt(user, "400: Audio missing")
-        return jsonify({"message": "Voice verification required"}), 400
+    if getattr(user, 'require_voice_auth', True):
 
-    try:
-        audio_bytes = base64_to_audio(data['audio'])
-        current_voice_emb = voice_extractor.describe(audio_bytes)
-        stored_voice_emb = decrypt_embedding(user.voice_embedding_encrypted)
+        # 6. BŁĄD: Brak przesłanego audio (Kod 400)
+        if 'audio' not in data or not data['audio']:
+            log_failed_attempt(user, "400: Audio missing")
+            return jsonify({"message": "Voice verification required"}), 400
 
-        dot_product = np.dot(current_voice_emb, stored_voice_emb)
-        norm_current = np.linalg.norm(current_voice_emb)
-        norm_stored = np.linalg.norm(stored_voice_emb)
+        try:
+            audio_bytes = base64_to_audio(data['audio'])
+            current_voice_emb = voice_extractor.describe(audio_bytes)
+            stored_voice_emb = decrypt_embedding(user.voice_embedding_encrypted)
 
-        cosine_similarity = dot_product / (norm_current * norm_stored)
+            dot_product = np.dot(current_voice_emb, stored_voice_emb)
+            norm_current = np.linalg.norm(current_voice_emb)
+            norm_stored = np.linalg.norm(stored_voice_emb)
 
-        # 7. BŁĄD: Niedopasowanie głosu (Kod 401)
-        if cosine_similarity < 0.45:
-            log_failed_attempt(user, "401: Voice mismatch")
-            return jsonify({"message": "Voice does not match biometrics"}), 401
+            cosine_similarity = dot_product / (norm_current * norm_stored)
 
-    except Exception as e:
-        log_failed_attempt(user, "500: Voice engine crash")
-        return jsonify({"message": f"Voice verification error: {e}"}), 500
+            # 7. BŁĄD: Niedopasowanie głosu
+            if cosine_similarity < voice_th:
+                log_failed_attempt(user, "401: Voice mismatch")
+                return jsonify({"message": "Voice does not match biometrics"}), 401
+
+        except Exception as e:
+            log_failed_attempt(user, "500: Voice engine crash")
+            return jsonify({"message": f"Voice verification error: {e}"}), 500
+
+    else:
+        print(f"ℹUżytkownik {user.email} ma wyłączone MFA. Pomijam weryfikację głosu.")
 
     # === SUKCES: UDANE LOGOWANIE ===
     try:
@@ -375,7 +421,12 @@ def login():
         "email": user.email
     })
 
-    return jsonify({"message": "Login successful", "redirect": url_for('dashboard')})
+    if user.is_admin:
+        return jsonify({"message": "Admin login successful", "redirect": url_for('admin_panel')})
+    else:
+        # Zwykły użytkownik ląduje na standardowym dashboardzie
+        return jsonify({"message": "Login successful", "redirect": url_for('dashboard')})
+
 
 
 
@@ -524,6 +575,139 @@ def reinit_biometrics():
         db.session.rollback()
         return jsonify({"message": f"Błąd aktualizacji biometrii: {str(e)}"}), 500
 
+
+from flask import render_template, abort
+
+
+# =====================================================================
+# 1. NOWY MODEL BAZY DANYCH DLA PARAMETRÓW GLOBALNYCH
+# =====================================================================
+class SystemConfig(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    face_threshold = db.Column(db.Float, default=0.6)  # Domyślny próg FaceNet (Euklidesowa)
+    voice_threshold = db.Column(db.Float, default=0.45)  # Domyślny próg głosu (Cosinusowa)
+
+
+# =====================================================================
+# 2. DEKORATOR ZABEZPIECZAJĄCY (Weryfikacja czy zalogowany to admin)
+# =====================================================================
+def admin_required():
+    user_id = session.get('user_id')
+    if not user_id:
+        abort(401)  # Brak autoryzacji
+    user = User.query.get(user_id)
+    if not user or not getattr(user, 'is_admin', False):
+        abort(403)  # Zabroniony dostęp
+    return user
+
+
+# =====================================================================
+# 3. ENDPOINTY PANELU ADMINISTRATORA
+# =====================================================================
+
+@app.route('/admin/panel')
+def admin_panel():
+    admin_required()  # Sprawdzenie uprawnień
+    # Pobranie obecnej konfiguracji lub utworzenie domyślnej
+    config = SystemConfig.query.first()
+    if not config:
+        config = SystemConfig(face_threshold=0.6, voice_threshold=0.45)
+        db.session.add(config)
+        db.session.commit()
+    return render_template('admin.html', config=config)
+
+
+# API: Pobieranie wszystkich kont
+@app.route('/api/admin/users', methods=['GET'])
+def admin_get_users():
+    admin_required()
+    users = User.query.all()
+    users_list = []
+    for u in users:
+        users_list.append({
+            "id": u.id,
+            "first_name": u.first_name,
+            "last_name": u.last_name,
+            "email": u.email,
+            "is_active": getattr(u, 'is_active', True),
+            "is_admin": u.is_admin
+        })
+    return jsonify(users_list)
+
+
+# API: Blokowanie / Aktywowanie użytkownika
+@app.route('/api/admin/users/<int:target_id>/toggle', methods=['POST'])
+def admin_toggle_user(target_id):
+    admin_required()
+    user = User.query.get_or_404(target_id)
+
+    if user.id == session.get('user_id'):
+        return jsonify({"message": "Nie możesz zablokować samego siebie!"}), 400
+
+    user.is_active = not getattr(user, 'is_active', True)
+    db.session.commit()
+
+    stan = "odblokowane" if user.is_active else "zablokowane"
+    return jsonify({"message": f"Konto użytkownika {user.email} zostało {stan}."})
+
+
+# API: Trwałe usuwanie użytkownika
+@app.route('/api/admin/users/<int:target_id>', methods=['DELETE'])
+def admin_delete_user(target_id):
+    admin_required()
+    user = User.query.get_or_404(target_id)
+
+    if user.id == session.get('user_id'):
+        return jsonify({"message": "Nie możesz usunąć swojego własnego konta!"}), 400
+
+    try:
+        # 1. RĘCZNIE CZYŚCIMY HISTORIĘ LOGOWANIA TEGO UŻYTKOWNIKA
+        # (Podmień 'LoginHistory' na dokładną nazwę swojej klasy historii, jeśli jest inna)
+        LoginHistory.query.filter_by(user_id=user.id).delete()
+
+        # 2. TERAZ USUWAMY SAMEGO UŻYTKOWNIKA
+        db.session.delete(user)
+        db.session.commit()
+
+        return jsonify({"message": f"Użytkownik {user.email} oraz jego historia zostali pomyślnie usunięci."})
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"message": f"Błąd podczas usuwania: {str(e)}"}), 500
+
+# API: Aktualizacja progów czułości algorytmów
+@app.route('/api/admin/config', methods=['POST'])
+def admin_update_config():
+    admin_required()
+    data = request.get_json()
+
+    config = SystemConfig.query.first()
+    if not config:
+        config = SystemConfig()
+        db.session.add(config)
+
+    config.face_threshold = float(data.get('face_threshold', 0.6))
+    config.voice_threshold = float(data.get('voice_threshold', 0.45))
+    db.session.commit()
+
+    return jsonify({"message": "Globalne parametry biometrii zostały pomyślnie zaktualizowane!"})
+
+
+@app.route('/api/user/toggle-voice', methods=['POST'])
+def toggle_voice_auth():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({"message": "Niezalogowany"}), 401
+
+    user = User.query.get(user_id)
+    user.require_voice_auth = not getattr(user, 'require_voice_auth', True)
+    db.session.commit()
+
+    status = "włączona" if user.require_voice_auth else "wyłączona"
+    return jsonify({
+        "message": f"Weryfikacja głosem została {status}.",
+        "require_voice": user.require_voice_auth
+    })
 
 if __name__ == "__main__":
     try: # pragma: no cover

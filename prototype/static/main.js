@@ -7,28 +7,16 @@ let audioChunks = [];
 let latestAudioBase64 = null;
 
 // =========================================================================
-// 1. OBSŁUGA KAMERY I MIKROFONU (Zintegrowana z zakładką Biometria)
+// 1. OBSŁUGA KAMERY (Bez automatycznego włączania mikrofonu na starcie!)
 // =========================================================================
 if (video) {
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+    // Żądamy tylko wideo, aby nie wymuszać ikony mikrofonu przy wejściu na stronę
+    navigator.mediaDevices.getUserMedia({ video: true, audio: false })
     .then(stream => {
         video.srcObject = stream;
-
-        // Konfiguracja nagrywania dźwięku (Web Audio API)
-        mediaRecorder = new MediaRecorder(stream);
-        mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
-        mediaRecorder.onstop = () => {
-            const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-            const reader = new FileReader();
-            reader.readAsDataURL(audioBlob);
-            reader.onloadend = () => {
-                latestAudioBase64 = reader.result;
-                console.log("Audio zostało pomyślnie przekonwertowane do Base64.");
-            };
-        };
     })
     .catch(err => {
-        console.error("Błąd dostępu do kamery/mikrofonu:", err);
+        console.error("Błąd dostępu do kamery:", err);
     });
 }
 
@@ -39,11 +27,11 @@ function toggleVoiceRecording() {
     if (mediaRecorder.state === "inactive") {
         audioChunks = [];
         mediaRecorder.start();
-        btn.innerText = "🛑 Nagrywanie... Kliknij, aby zatrzymać";
+        btn.innerText = "Nagrywanie... Kliknij, aby zatrzymać";
         btn.style.background = "#dc3545";
     } else {
         mediaRecorder.stop();
-        btn.innerText = "🎤 Głos nagrany! Kliknij, aby powtórzyć";
+        btn.innerText = "Głos nagrany! Kliknij, aby powtórzyć";
         btn.style.background = "#28a745";
     }
 }
@@ -62,12 +50,9 @@ function captureFrame() {
 // 2. LOGIKA PRZEŁĄCZANIA ZAKŁADEK (TABS)
 // =========================================================================
 function switchTab(tabName) {
-    // 1. Ukryj wszystkie zawartości zakładek i usuń klasę active z przycisków
     document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
 
-    // 2. Aktywuj kliknięty przycisk i pokaż powiązaną zawartość
-    // Używamy currentTarget, aby upewnić się, że łapiemy właściwy element przycisku
     if (event && event.currentTarget) {
         event.currentTarget.classList.add('active');
     }
@@ -77,14 +62,11 @@ function switchTab(tabName) {
         targetContent.classList.add('active');
     }
 
-    // 3. Akcja specjalna: Jeśli wchodzimy do historii, pobierz świeże dane z bazy
     if (tabName === 'history') {
         loadLoginHistory();
     }
 
     if (tabName === 'tab-biometrics') {
-        // Wywołaj Twoją oryginalną funkcję, która odpala kamerę
-        // i podczepia ją pod tag <video id="video">
         if (typeof startCamera === 'function') {
             startCamera();
         } else if (typeof initCamera === 'function') {
@@ -94,10 +76,9 @@ function switchTab(tabName) {
 }
 
 // =========================================================================
-// 3. Z3: IMPLEMENTACJA AKCJI PANELU UŻYTKOWNIKA (API)
+// 3. IMPLEMENTACJA AKCJI PANELU UŻYTKOWNIKA (API)
 // =========================================================================
 
-// Aktualizacja danych profilu (Imię, Nazwisko, Hasło)
 function updateProfile() {
     const fn = document.getElementById('edit-firstname').value;
     const ln = document.getElementById('edit-lastname').value;
@@ -119,7 +100,6 @@ function updateProfile() {
     .then(data => {
         statusTxt.style.color = "green";
         statusTxt.innerText = data.message;
-        // Dynamicznie zaktualizuj imię na powitaniu u góry strony
         const userDisplay = document.getElementById('user-display-name');
         if (userDisplay) userDisplay.innerText = fn;
     })
@@ -129,7 +109,6 @@ function updateProfile() {
     });
 }
 
-// Pobieranie i renderowanie historii logowań użytkownika
 function loadLoginHistory() {
     const tbody = document.getElementById('history-table-body');
     if (!tbody) return;
@@ -137,7 +116,7 @@ function loadLoginHistory() {
     fetch('/api/user/history')
     .then(resp => resp.json())
     .then(data => {
-        tbody.innerHTML = ""; // Wyczyszczenie starej tabeli
+        tbody.innerHTML = "";
         if (data.length === 0) {
             tbody.innerHTML = "<tr><td colspan='3' style='text-align:center; color:#888;'>Brak historii logowań</td></tr>";
             return;
@@ -158,19 +137,16 @@ function loadLoginHistory() {
     });
 }
 
-// 1. URUCHOMIENIE STRUMIENIA I SPRAWDZANIA TWARZY PO WEJŚCIU NA DASHBOARD
 function initBiometricsTab() {
-    // Podłączenie strumienia z Flaska pod obrazek w zakładce biometrii
     const imgFeed = document.getElementById("biometricsVideoFeed");
     if (imgFeed) {
         imgFeed.src = "/video?ts=" + Date.now();
     }
 }
 
-// Sprawdzanie statusu twarzy w zakładce biometrii (co 500ms)
 setInterval(() => {
     const el = document.getElementById("biometrics_face_status");
-    if (!el) return; // wykonaj tylko jeśli zakładka istnieje/jest widoczna
+    if (!el) return;
 
     fetch("/face_status")
         .then(r => r.json())
@@ -185,12 +161,8 @@ setInterval(() => {
         }).catch(err => {});
 }, 500);
 
-
-// 2. AKTUALIZACJA SAMEJ TWARZY (Wysyła tylko pusty sygnał, bo backend sam bierze klatkę przez camera.get_frame())
-// Pomocnicza funkcja pobierająca obraz z elementu graficznego (identycznie jak w rejestracji)
 function getBiometricsFrameBase64() {
     const videoFeed = document.getElementById('biometricsVideoFeed');
-    // Tworzymy dynamicznie ukryty canvas o wymiarach takich jak w rejestracji
     const canvas = document.createElement('canvas');
     canvas.width = 160;
     canvas.height = 160;
@@ -205,10 +177,9 @@ function getBiometricsFrameBase64() {
     }
 }
 
-// Zaktualizowana funkcja wysyłająca PRAWDZIWY Base64 twarzy
 function reinitFaceOnly() {
     const statusTxt = document.getElementById('biometrics-status');
-    const base64Image = getBiometricsFrameBase64(); // Przechwytujemy klatkę!
+    const base64Image = getBiometricsFrameBase64();
 
     if (!base64Image) {
         statusTxt.style.color = "red";
@@ -222,7 +193,7 @@ function reinitFaceOnly() {
     fetch('/api/user/reinit_biometrics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: base64Image }) // Wysyłamy autentyczny Base64
+        body: JSON.stringify({ image: base64Image })
     })
     .then(resp => {
         if (!resp.ok) return resp.json().then(err => { throw new Error(err.message); });
@@ -238,8 +209,6 @@ function reinitFaceOnly() {
     });
 }
 
-
-// 3. AKTUALIZACJA SAMEGO GŁOSU (Dokładnie tak jak w login.html - nagrywanie 3s i wysyłka)
 function reinitVoiceWithRecording() {
     const statusTxt = document.getElementById('biometrics-status');
     const voiceBtn = document.getElementById('voiceBtn');
@@ -270,7 +239,7 @@ function reinitVoiceWithRecording() {
                     fetch('/api/user/reinit_biometrics', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ audio: base64Audio }) // Wysyłamy wygenerowane audio
+                        body: JSON.stringify({ audio: base64Audio })
                     })
                     .then(res => res.json())
                     .then(data => {
@@ -286,7 +255,6 @@ function reinitVoiceWithRecording() {
                 };
             });
 
-            // Start 3-sekundowego nagrywania
             mediaRecorder.start();
             statusTxt.innerText = "Nagrywanie głosu... Powiedz coś teraz (3s).";
             statusTxt.style.color = "purple";
@@ -305,33 +273,142 @@ function reinitVoiceWithRecording() {
 }
 
 // =========================================================================
-// 4. STARE KOMENDY DO LOGOWANIA I REJESTRACJI (Zachowane dla kompatybilności)
+// 4. NOWA LOGIKA LOGOWANIA (Z warunkowym sprawdzaniem i nagrywaniem głosu)
 // =========================================================================
-function registerUser() {
-    const imgData = captureFrame();
-    fetch('/register', {
+function loginUser() {
+    const emailEl = document.getElementById('email');
+    const passwordEl = document.getElementById('password');
+    const statusTxt = document.getElementById('status');
+
+    if (!emailEl || !passwordEl) {
+        console.error("Nie znaleziono pól formularza logowania (email/password) w drzewie DOM.");
+        return;
+    }
+
+    const email = emailEl.value;
+    const password = passwordEl.value;
+
+    if (!email || !password) {
+        if (statusTxt) statusTxt.innerText = "Proszę uzupełnić adres e-mail oraz hasło.";
+        return;
+    }
+
+    if (statusTxt) {
+        statusTxt.innerText = "Sprawdzanie konfiguracji konta...";
+        statusTxt.style.color = "orange";
+    }
+
+    // KROK 1: Szybkie sprawdzenie w bazie danych
+    fetch('/api/login-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: imgData })
+        body: JSON.stringify({ email: email, password: password })
     })
-    .then(resp => resp.json())
-    .then(data => { if(status) status.innerText = data.message; })
-    .catch(() => { if(status) status.innerText = "Registration error"; });
+    .then(resp => {
+        if (!resp.ok) {
+            return resp.json().then(err => { throw new Error(err.message || "Błędne dane logowania"); });
+        }
+        return resp.json();
+    })
+    .then(preCheck => {
+        if (!preCheck.valid) {
+            throw new Error(preCheck.message || "Autoryzacja odrzucona");
+        }
+
+        // KROK 2: Przechwytujemy zdjęcie twarzy
+        const faceImage = captureFrame();
+        if (!faceImage) {
+            throw new Error("Nie można przechwycić obrazu z kamery. Upewnij się, że dasz do niej dostęp.");
+        }
+
+        // KROK 3: Sprawdzamy flagę pobraną z bazy
+        if (preCheck.require_voice) {
+            // Użytkownik MA WŁĄCZONY suwak -> dopiero tutaj żądamy dostępu do AUDIO i nagrywamy
+            if (statusTxt) {
+                statusTxt.innerText = "Wymagana autoryzacja głosem. Powiedz coś teraz (3s)...";
+                statusTxt.style.color = "purple";
+            }
+
+            navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(audioStream => {
+                const loginRecorder = new MediaRecorder(audioStream);
+                const chunks = [];
+
+                loginRecorder.ondataavailable = e => chunks.push(e.data);
+                loginRecorder.onstop = () => {
+                    const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+                    const reader = new FileReader();
+                    reader.readAsDataURL(audioBlob);
+                    reader.onloadend = () => {
+                        const base64Audio = reader.result;
+                        sendFinalLoginRequest(email, password, faceImage, base64Audio, statusTxt);
+                    };
+                    audioStream.getTracks().forEach(track => track.stop());
+                };
+
+                loginRecorder.start();
+                setTimeout(() => {
+                    loginRecorder.stop();
+                }, 3000);
+            })
+            .catch(err => {
+                if (statusTxt) {
+                    statusTxt.innerText = "Błąd mikrofonu: " + err.message;
+                    statusTxt.style.color = "red";
+                }
+            });
+
+        } else {
+            // Użytkownik WYŁĄCZYŁ suwak -> Całkowicie pomijamy mikrofon
+            if (statusTxt) {
+                statusTxt.innerText = "Autoryzacja uproszczona (Tylko Twarz). Przetwarzanie...";
+                statusTxt.style.color = "blue";
+            }
+            sendFinalLoginRequest(email, password, faceImage, null, statusTxt);
+        }
+    })
+    .catch(err => {
+        if (statusTxt) {
+            statusTxt.innerText = err.message;
+            statusTxt.style.color = "red";
+        }
+    });
 }
 
-function loginUser() {
-    const imgData = captureFrame();
+function sendFinalLoginRequest(email, password, imageBase64, audioBase64, statusElement) {
+    const payload = {
+        email: email,
+        password: password,
+        image: imageBase64,
+        audio: audioBase64
+    };
+
     fetch('/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: imgData })
+        body: JSON.stringify(payload)
     })
-    .then(resp => resp.json())
+    .then(resp => {
+        if (!resp.ok) {
+            return resp.json().then(err => { throw new Error(err.message || "Błąd uwierzytelniania biometrycznego."); });
+        }
+        return resp.json();
+    })
     .then(data => {
-        if(status) status.innerText = data.message;
-        if (data.redirect) window.location.href = data.redirect;
+        if (statusElement) {
+            statusElement.innerText = data.message;
+            statusElement.style.color = "green";
+        }
+        if (data.redirect) {
+            window.location.href = data.redirect;
+        }
     })
-    .catch(() => { if(status) status.innerText = "Login error"; });
+    .catch(err => {
+        if (statusElement) {
+            statusElement.innerText = err.message;
+            statusElement.style.color = "red";
+        }
+    });
 }
 
 window.addEventListener("load", () => {

@@ -59,6 +59,7 @@
             "/video?ts=" + Date.now();
     }
     window.addEventListener("load", startStream);
+
     function updateFaceStatus() {
         fetch("/face_status")
             .then(r => r.json())
@@ -88,81 +89,118 @@
             return;
         }
 
-        statusDiv.innerText = "Requesting microphone access...";
+        statusDiv.innerText = "Sprawdzanie konfiguracji konta...";
         statusDiv.style.color = "orange";
 
-        // Wywołanie nagrywania mikrofonu za pomocą MediaRecorder API
-        navigator.mediaDevices.getUserMedia({ audio: true })
-            .then(stream => {
-                const mediaRecorder = new MediaRecorder(stream);
-                const audioChunks = [];
+        // KROK 1: Sprawdzamy w bazie, czy użytkownik potrzebuje MFA (głos)
+        fetch('/api/login-check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: emailValue, password: passwordValue })
+        })
+        .then(res => {
+            if (!res.ok) {
+                return res.json().then(data => { throw new Error(data.message || "Błędne dane logowania"); });
+            }
+            return res.json();
+        })
+        .then(preCheck => {
+            if (!preCheck.valid) {
+                throw new Error(preCheck.message || "Autoryzacja odrzucona");
+            }
 
-                mediaRecorder.addEventListener("dataavailable", event => {
-                    audioChunks.push(event.data);
-                });
+            // KROK 2: Sprawdzamy flagę require_voice z backendu
+            if (preCheck.require_voice) {
 
-                mediaRecorder.addEventListener("stop", () => {
-                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                    const reader = new FileReader();
-                    reader.readAsDataURL(audioBlob);
+                // === WARIANT A: GŁOS JEST WYMAGANY ===
+                statusDiv.innerText = "Requesting microphone access...";
+                statusDiv.style.color = "orange";
 
-                    reader.onloadend = () => {
-                        const base64Audio = reader.result;
+                navigator.mediaDevices.getUserMedia({ audio: true })
+                    .then(stream => {
+                        const mediaRecorder = new MediaRecorder(stream);
+                        const audioChunks = [];
 
-                        statusDiv.innerText = "Verifying credentials and biometrics...";
-                        statusDiv.style.color = "blue";
+                        mediaRecorder.addEventListener("dataavailable", event => {
+                            audioChunks.push(event.data);
+                        });
 
-                        const payload = {
-                            email: emailValue,
-                            password: passwordValue,
-                            audio: base64Audio // Przekazanie sparsowanego dźwięku do backendu
-                        };
+                        mediaRecorder.addEventListener("stop", () => {
+                            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                            const reader = new FileReader();
+                            reader.readAsDataURL(audioBlob);
 
-                        fetch('/login', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(payload)
-                        })
-                            .then(res => {
-                                return res.json().then(data => {
-                                    if (!res.ok) throw new Error(data.message || "Login failed");
-                                    return data;
-                                });
-                            })
-                            .then(data => {
-                                statusDiv.innerText = data.message;
-                                statusDiv.style.color = "green";
+                            reader.onloadend = () => {
+                                const base64Audio = reader.result;
+                                // Wysyłamy dane z głosem
+                                sendFinalLogin(emailValue, passwordValue, base64Audio);
+                            };
+                        });
 
-                                if (data.redirect) {
-                                    setTimeout(() => {
-                                        window.location.href = data.redirect;
-                                    }, 1000);
-                                }
-                            })
-                            .catch((err) => {
-                                statusDiv.innerText = err.message;
-                                statusDiv.style.color = "red";
-                            });
-                    };
-                });
+                        mediaRecorder.start();
+                        statusDiv.innerText = "Recording voice... Please speak now (3s).";
+                        statusDiv.style.color = "purple";
 
-                // Start nagrywania (zbieranie próbek przez 3 sekundy)
-                mediaRecorder.start();
-                statusDiv.innerText = "Recording voice... Please speak now (3s).";
-                statusDiv.style.color = "purple";
+                        setTimeout(() => {
+                            mediaRecorder.stop();
+                            stream.getTracks().forEach(track => track.stop());
+                        }, 3000);
+                    })
+                    .catch(err => {
+                        statusDiv.innerText = "Microphone error: " + err.message;
+                        statusDiv.style.color = "red";
+                    });
 
-                setTimeout(() => {
-                    mediaRecorder.stop();
-                    // Zwolnienie zasobów mikrofonu po zakończeniu nagrania
-                    stream.getTracks().forEach(track => track.stop());
-                }, 3000);
+            } else {
 
-            })
-            .catch(err => {
-                statusDiv.innerText = "Microphone error: " + err.message;
-                statusDiv.style.color = "red";
-            });
+                // === WARIANT B: GŁOS JEST WYŁĄCZONY ===
+                statusDiv.innerText = "Autoryzacja uproszczona (Tylko Twarz). Przetwarzanie...";
+                statusDiv.style.color = "blue";
+
+                // Wysyłamy żądanie natychmiast, przekazując null zamiast audio
+                sendFinalLogin(emailValue, passwordValue, null);
+            }
+        })
+        .catch(err => {
+            statusDiv.innerText = err.message;
+            statusDiv.style.color = "red";
+        });
     });
+
+    // Funkcja pomocnicza wysyłająca ostateczne dane do endpointu /login
+    function sendFinalLogin(email, password, audioData) {
+        const payload = {
+            email: email,
+            password: password,
+            audio: audioData // Może być string Base64 lub null
+        };
+
+        fetch('/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(res => {
+            return res.json().then(data => {
+                if (!res.ok) throw new Error(data.message || "Login failed");
+                return data;
+            });
+        })
+        .then(data => {
+            statusDiv.innerText = data.message;
+            statusDiv.style.color = "green";
+
+            if (data.redirect) {
+                setTimeout(() => {
+                    window.location.href = data.redirect;
+                }, 1000);
+            }
+        })
+        .catch(err => {
+            statusDiv.innerText = err.message;
+            statusDiv.style.color = "red";
+        });
+    }
 </script>
 </body>
 </html>
