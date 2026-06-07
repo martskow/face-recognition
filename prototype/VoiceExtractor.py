@@ -4,16 +4,18 @@ import io
 import numpy as np
 import torch
 
+
 # =========================================================================
 def bulletproof_amp_decorator(*args, **kwargs):
     if args and callable(args[0]):
         return args[0]
     return lambda f: f
 
-if not hasattr(torch, 'amp'):
-    mock_amp = ModuleType('amp')
-    torch.amp = mock_amp
-    sys.modules['torch.amp'] = mock_amp
+
+if not hasattr(torch, 'amp'):  # pragma: no cover
+    mock_amp = ModuleType('amp')  # pragma: no cover
+    torch.amp = mock_amp  # pragma: no cover
+    sys.modules['torch.amp'] = mock_amp  # pragma: no cover
 
 torch.amp.custom_fwd = bulletproof_amp_decorator
 torch.amp.custom_bwd = bulletproof_amp_decorator
