@@ -1,6 +1,8 @@
 from unittest.mock import patch
 import numpy as np
 import pytest
+from prototype.camera_api import LoginHistory
+import datetime
 
 with patch('camera_capture.ImageAcquisition'), \
      patch('FaceDetector.FaceDetector'), \
@@ -129,14 +131,20 @@ def test_register_email_already_exists(client):
         assert "E-mail already exists" in response.get_json()['message']
 
 
+@patch('prototype.camera_api.base64_to_audio')
+@patch('prototype.camera_api.voice_extractor.describe')
 @patch('prototype.camera_api.base64_to_image')
 @patch('prototype.camera_api.detector.get_face')
 @patch('prototype.camera_api.facenet.describe')
 @patch('prototype.camera_api.db.session')
-def test_register_success(mock_db, mock_describe, mock_get_face, mock_base64, client):
+def test_register_success(mock_db, mock_describe, mock_get_face, mock_base64, mock_voice_describe, mock_base64_audio,
+                          client):
     mock_base64.return_value = np.zeros((160, 160, 3))
     mock_get_face.return_value = (np.zeros((160, 160, 3)), (0, 0, 10, 10), None)
     mock_describe.return_value = np.random.rand(128)
+
+    mock_base64_audio.return_value = b'fake_audio_bytes'
+    mock_voice_describe.return_value = np.random.rand(128)
 
     with patch('prototype.camera_api.User.query') as mock_query:
         mock_query.filter_by.return_value.first.return_value = None
@@ -146,7 +154,8 @@ def test_register_success(mock_db, mock_describe, mock_get_face, mock_base64, cl
             "last_name": "Surname",
             "email": "name@surname.pl",
             "password": "StrongPassword123!",
-            "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+            "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+            "audio": "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA="
         }
 
         response = client.post('/register', json=payload)
@@ -180,7 +189,7 @@ def test_register_face_not_detected(mock_get_face, mock_base64, client):
 @patch('prototype.camera_api.detector.get_face')
 @patch('prototype.camera_api.is_face_distance_valid')
 def test_login_face_distance_errors(mock_dist, mock_get_face, mock_get_frame, client):
-    fake_user = User(email="dist@test.pl", password="hash")
+    fake_user = User(id=1, email="dist@test.pl", password="hash", is_active=True, require_voice_auth=False)
     mock_get_frame.return_value = np.zeros((480, 640, 3))
     mock_get_face.return_value = (np.zeros((160, 160, 3)), (0, 0, 10, 10), None)
 
@@ -195,6 +204,7 @@ def test_login_face_distance_errors(mock_dist, mock_get_face, mock_get_frame, cl
         mock_dist.return_value = (False, 0.01)
         res_far = client.post('/login', json={"email": "dist@test.pl", "password": "p"})
         assert "too far" in res_far.get_json()['message']
+
 
 def test_login_user_not_found(client):
     with patch('prototype.camera_api.User.query') as mock_query:
@@ -265,7 +275,7 @@ def test_login_biometric_mismatch(mock_predict, mock_crop, mock_parse, mock_decr
 @patch('prototype.camera_api.detector.get_face')
 @patch('prototype.camera_api.is_face_distance_valid')
 def test_login_face_distance_too_close(mock_dist, mock_get_face, mock_get_frame, client):
-    fake_user = User(email="name@surname.pl", password="StrongPassword123!")
+    fake_user = User(id=1, email="name@surname.pl", password="StrongPassword123!", is_active=True, require_voice_auth=False)
     mock_get_frame.return_value = np.zeros((480, 640, 3))
     mock_get_face.return_value = (np.zeros((160, 160, 3)), (0, 0, 10, 10), None)
 
@@ -284,7 +294,7 @@ def test_login_face_distance_too_close(mock_dist, mock_get_face, mock_get_frame,
 @patch('prototype.camera_api.detector.get_face')
 @patch('prototype.camera_api.is_face_distance_valid')
 def test_login_face_distance_too_far(mock_dist, mock_get_face, mock_get_frame, client):
-    fake_user = User(email="name@surname.pl", password="StrongPassword123!")
+    fake_user = User(id=1, email="name@surname.pl", password="StrongPassword123!", is_active=True, require_voice_auth=False)
     mock_get_frame.return_value = np.zeros((480, 640, 3))
     mock_get_face.return_value = (np.zeros((160, 160, 3)), (0, 0, 10, 10), None)
 
@@ -305,7 +315,7 @@ def test_login_face_not_detected(mock_get_face, mock_get_frame, client):
     mock_get_frame.return_value = np.zeros((480, 640, 3))
     mock_get_face.return_value = (None, None, "No face detected")
 
-    fake_user = User(email="name@surname.pl", password="StrongPassword123!")
+    fake_user = User(id=1, email="name@surname.pl", password="StrongPassword123!", is_active=True, require_voice_auth=False)
 
     with patch('prototype.camera_api.User.query') as mock_query, \
             patch('prototype.camera_api.check_password_hash', return_value=True):
@@ -323,7 +333,7 @@ def test_login_face_not_detected(mock_get_face, mock_get_frame, client):
 @patch('prototype.camera_api.image_cropper.crop')
 @patch('prototype.camera_api.anti_spoof_engine.predict')
 def test_login_spoofing_detected(mock_predict, mock_crop, mock_parse, mock_get_face, mock_get_frame, client):
-    fake_user = User(id=1, email="test@test.pl", password="hash")
+    fake_user = User(id=1, email="test@test.pl", password="hash", is_active=True, require_voice_auth=False)
 
     mock_get_frame.return_value = np.zeros((480, 640, 3))
     mock_get_face.return_value = (np.zeros((160, 160, 3)), (100, 100, 200, 200), None)
@@ -342,7 +352,6 @@ def test_login_spoofing_detected(mock_predict, mock_crop, mock_parse, mock_get_f
 
         assert response.status_code == 403
         assert "Spoofing detected" in response.get_json()['message']
-
 
 def test_encryption_decryption_consistency():
     original_embedding = np.random.rand(128).tolist()
@@ -450,7 +459,7 @@ def test_login_success_path(mock_db, mock_decrypt, mock_describe, mock_predict,
                             mock_get_frame, client):
 
     fake_user = User(id=1, first_name="Name", last_name="Surname", email="name@surname.pl",
-                     password="StrongPassword123!")
+                     password="StrongPassword123!", is_active=True, require_voice_auth=False)
 
     mock_get_frame.return_value = np.zeros((480, 640, 3))
     mock_get_face.return_value = (np.zeros((160, 160, 3)), (0, 0, 10, 10), None)
@@ -471,6 +480,7 @@ def test_login_success_path(mock_db, mock_decrypt, mock_describe, mock_predict,
 
         assert response.status_code == 200
         assert "Login successful" in response.get_json()['message']
+
 
 def test_simple_views(client):
     assert client.get('/').status_code == 200
@@ -508,3 +518,83 @@ def test_logout(client):
     assert response.status_code == 302
     with client.session_transaction() as sess:
         assert 'user_id' not in sess
+
+
+# --- TESTY: AUDYT I BEZPIECZEŃSTWO ---
+
+@patch('prototype.camera_api.LoginHistory.query')
+def test_brute_force_lockdown(mock_history_query, client):
+    fake_user = User(id=1, email="brute@test.pl", password="hash", is_active=True)
+
+    fake_logs = [
+        LoginHistory(user_id=1, status="Failed (400: Wrong credentials)")
+        for _ in range(5)
+    ]
+
+    mock_history_query.filter.return_value.all.return_value = fake_logs
+
+    with patch('prototype.camera_api.User.query') as mock_user_query, \
+            patch('prototype.camera_api.db.session'):
+        mock_user_query.filter_by.return_value.first.return_value = fake_user
+
+        with patch('prototype.camera_api.check_password_hash', return_value=False):
+            response = client.post('/login', json={
+                "email": "brute@test.pl",
+                "password": "wrong_password"
+            })
+
+            assert response.status_code == 400
+
+            assert fake_user.is_active is False
+
+
+@patch('prototype.camera_api.LoginHistory.query')
+def test_spoofing_lockdown(mock_history_query, client):
+    fake_user = User(id=2, email="spoof@test.pl", password="hash", is_active=True)
+
+    fake_logs = [
+        LoginHistory(user_id=2, status="Failed 403: Spoofing detected")
+        for _ in range(3)
+    ]
+
+    mock_history_query.filter.return_value.all.return_value = fake_logs
+
+    with patch('prototype.camera_api.User.query') as mock_user_query, \
+            patch('prototype.camera_api.db.session'):
+        mock_user_query.filter_by.return_value.first.return_value = fake_user
+
+        with patch('prototype.camera_api.check_password_hash', return_value=False):
+            client.post('/login', json={"email": "spoof@test.pl", "password": "wrong"})
+
+            assert fake_user.is_active is False
+
+
+def test_admin_export_report_success(client):
+    with client.session_transaction() as sess:
+        sess['user_id'] = 99
+
+    admin_user = User(id=99, email="admin@test.pl", is_admin=True)
+
+    fake_logs = [
+        LoginHistory(id=1, user_id=2, timestamp=datetime.datetime(2026, 6, 6, 12, 0, 0), ip_address="192.168.0.1",
+                     user_agent="PyTest", status="Passed"),
+        LoginHistory(id=2, user_id=3, timestamp=datetime.datetime(2026, 6, 6, 12, 5, 0), ip_address="192.168.0.2",
+                     user_agent="PyTest", status="Failed (Spoofing)")
+    ]
+
+    with patch('prototype.camera_api.User.query') as mock_user_query, \
+            patch('prototype.camera_api.LoginHistory.query') as mock_history_query:
+        mock_user_query.get.return_value = admin_user
+
+        mock_history_query.order_by.return_value.all.return_value = fake_logs
+
+        response = client.get('/api/admin/export-report')
+
+        assert response.status_code == 200
+        assert "text/csv" in response.headers["Content-Type"]
+        assert "attachment; filename=" in response.headers["Content-Disposition"]
+
+        csv_content = response.data.decode('utf-8')
+        assert "ID_Zdarzenia;ID_Uzytkownika;" in csv_content
+        assert "192.168.0.1" in csv_content
+        assert "Failed (Spoofing)" in csv_content

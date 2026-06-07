@@ -2,16 +2,15 @@ import os
 import json
 import numpy as np
 import cv2
-import base64
+import csv
 import warnings
-from io import BytesIO
+from io import BytesIO, StringIO
 from PIL import Image
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 import base64
-
-
-from flask import Flask, Response, jsonify, render_template, request, session, redirect, url_for
+from sqlalchemy import func
+from flask import Flask, Response, jsonify, make_response, render_template, request, session, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from cryptography.fernet import Fernet
@@ -62,12 +61,20 @@ class LoginHistory(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     ip_address = db.Column(db.String(45), nullable=True)
+    user_agent = db.Column(db.String(255), nullable=True)
     status = db.Column(db.String(50),
                        nullable=False)  # np. "Success", "Failed: Face mismatch", "Failed: Voice mismatch"
 
     # Opcjonalnie relacja, żeby łatwo wyciągać dane użytkownika
     user = db.relationship('User', backref=db.backref('login_histories', lazy=True))
 
+# =====================================================================
+# 1. NOWY MODEL BAZY DANYCH DLA PARAMETRÓW GLOBALNYCH
+# =====================================================================
+class SystemConfig(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    face_threshold = db.Column(db.Float, default=0.6)  # Domyślny próg FaceNet (Euklidesowa)
+    voice_threshold = db.Column(db.Float, default=0.45)  # Domyślny próg głosu (Cosinusowa)
 
 with app.app_context():
     db.create_all()
@@ -168,6 +175,37 @@ def generate_frames():
                 b'\r\n'
         )
 
+
+def check_security_threats(user):
+    time_threshold = datetime.utcnow() - timedelta(minutes=15)
+
+    recent_logs = LoginHistory.query.filter(
+        LoginHistory.user_id == user.id,
+        LoginHistory.timestamp >= time_threshold
+    ).all()
+
+    failed_logins = 0
+    spoofing_attempts = 0
+
+    for log in recent_logs:
+        if log.status.startswith("Failed"):
+            failed_logins += 1
+        if "Spoofing detected" in log.status:
+            spoofing_attempts += 1
+
+    if failed_logins >= 5 or spoofing_attempts >= 3:
+        user.is_active = False
+        db.session.commit()
+
+        lockdown_log = LoginHistory(
+            user_id=user.id,
+            ip_address="SYSTEM",
+            user_agent="SYSTEM_AUTO_LOCK",
+            status="BLOCKED: Security policy violation (Brute-force / Spoofing)"
+        )
+        db.session.add(lockdown_log)
+        db.session.commit()
+        print(f"⚠️ KONTO ZABLOKOWANE AUTOMATYCZNIE: {user.email}")
 
 # --- Views ---
 @app.route('/')
@@ -287,10 +325,13 @@ def login():
                 failed_log = LoginHistory(
                     user_id=user_obj.id,
                     ip_address=request.remote_addr,
+                    user_agent=request.user_agent.string[:255],
                     status=f"Failed ({error_msg})"
                 )
                 db.session.add(failed_log)
                 db.session.commit()
+
+                check_security_threats(user_obj)
             except Exception as e:
                 print(f"Błąd zapisu historii logowania: {e}")
 
@@ -579,14 +620,6 @@ def reinit_biometrics():
 from flask import render_template, abort
 
 
-# =====================================================================
-# 1. NOWY MODEL BAZY DANYCH DLA PARAMETRÓW GLOBALNYCH
-# =====================================================================
-class SystemConfig(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    face_threshold = db.Column(db.Float, default=0.6)  # Domyślny próg FaceNet (Euklidesowa)
-    voice_threshold = db.Column(db.Float, default=0.45)  # Domyślny próg głosu (Cosinusowa)
-
 
 # =====================================================================
 # 2. DEKORATOR ZABEZPIECZAJĄCY (Weryfikacja czy zalogowany to admin)
@@ -708,6 +741,71 @@ def toggle_voice_auth():
         "message": f"Weryfikacja głosem została {status}.",
         "require_voice": user.require_voice_auth
     })
+
+
+@app.route('/api/admin/security-report', methods=['GET'])
+def admin_security_report():
+    admin_required()
+
+    spoofing_count = LoginHistory.query.filter(LoginHistory.status.like('%Spoofing%')).count()
+
+    recent_blocks = LoginHistory.query.filter_by(
+        status='BLOCKED: Security policy violation (Brute-force / Spoofing)').order_by(
+        LoginHistory.timestamp.desc()).limit(10).all()
+
+    blocks_data = [{
+        "user_id": b.user_id,
+        "date": b.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+        "reason": b.status
+    } for b in recent_blocks]
+
+    top_suspect_ips = db.session.query(
+        LoginHistory.ip_address, func.count(LoginHistory.id).label('fails')
+    ).filter(LoginHistory.status.like('Failed%')).group_by(LoginHistory.ip_address).order_by(
+        func.count(LoginHistory.id).desc()).limit(5).all()
+
+    ip_data = [{"ip": row.ip_address, "failures": row.fails} for row in top_suspect_ips]
+
+    return jsonify({
+        "total_spoofing_attempts": spoofing_count,
+        "recent_system_blocks": blocks_data,
+        "top_suspicious_ips": ip_data
+    })
+
+
+@app.route('/api/admin/export-report', methods=['GET'])
+def admin_export_report():
+    admin_required()
+
+    # Pobieramy całą historię od najnowszych
+    logs = LoginHistory.query.order_by(LoginHistory.timestamp.desc()).all()
+
+    si = StringIO()
+    si.write('\ufeff')
+
+    cw = csv.writer(si, delimiter=';')
+
+    # Nagłówki kolumn
+    cw.writerow(
+        ['ID_Zdarzenia', 'ID_Uzytkownika', 'Data_i_Czas', 'Adres_IP', 'Urzadzenie_UserAgent', 'Status_Logowania'])
+
+    # Wypełniamy danymi
+    for log in logs:
+        cw.writerow([
+            log.id,
+            log.user_id,
+            log.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            log.ip_address,
+            log.user_agent,
+            log.status
+        ])
+
+    # Przygotowujemy odpowiedź do pobrania pliku
+    output = make_response(si.getvalue())
+    output.headers["Content-Disposition"] = "attachment; filename=raport_bezpieczenstwa_audyt.csv"
+    output.headers["Content-type"] = "text/csv"
+
+    return output
 
 if __name__ == "__main__":
     try: # pragma: no cover

@@ -1,0 +1,20 @@
+# Pliki tymczasowe i cache Pythona
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Pliki konfiguracyjne środowiska IDE (np. PyCharm)
+.idea/
+
+# Raporty z testów
+.coverage
+
+# Lokalne bazy danych (nie chcemy nadpisywać kont innych osób!)
+*.db
+*.sqlite3
+
+
+# Modele
+pretrained_models/
+prototype/pretrained_models/
