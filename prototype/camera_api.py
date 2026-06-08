@@ -150,6 +150,7 @@ def validate_user_data(data):
 
     return errors
 
+
 def generate_frames():
     global face_detected
 
@@ -777,7 +778,6 @@ def admin_security_report():
 def admin_export_report():
     admin_required()
 
-    # Pobieramy całą historię od najnowszych
     logs = LoginHistory.query.order_by(LoginHistory.timestamp.desc()).all()
 
     si = StringIO()
@@ -785,11 +785,9 @@ def admin_export_report():
 
     cw = csv.writer(si, delimiter=';')
 
-    # Nagłówki kolumn
     cw.writerow(
         ['ID_Zdarzenia', 'ID_Uzytkownika', 'Data_i_Czas', 'Adres_IP', 'Urzadzenie_UserAgent', 'Status_Logowania'])
 
-    # Wypełniamy danymi
     for log in logs:
         cw.writerow([
             log.id,
@@ -800,12 +798,12 @@ def admin_export_report():
             log.status
         ])
 
-    # Przygotowujemy odpowiedź do pobrania pliku
     output = make_response(si.getvalue())
     output.headers["Content-Disposition"] = "attachment; filename=raport_bezpieczenstwa_audyt.csv"
     output.headers["Content-type"] = "text/csv"
 
     return output
+
 
 if __name__ == "__main__":
     try: # pragma: no cover

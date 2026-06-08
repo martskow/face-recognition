@@ -522,8 +522,6 @@ def test_logout(client):
         assert 'user_id' not in sess
 
 
-# --- TESTY: AUDYT I BEZPIECZEŃSTWO ---
-
 @patch('prototype.camera_api.LoginHistory.query')
 def test_brute_force_lockdown(mock_history_query, client):
     fake_user = User(id=1, email="brute@test.pl", password="hash", is_active=True)
@@ -626,8 +624,6 @@ def test_base64_to_cv2_img_invalid():
     assert base64_to_cv2_img("niepoprawny_ciąg_znaków_b64") is None
 
 
-# --- 2. TESTY ENDPOINTU /api/login-check ---
-
 @patch('prototype.camera_api.check_password_hash')
 def test_login_check_success(mock_check_hash, client):
     fake_user = User(id=1, email="test@test.pl", password="hash", is_active=True, require_voice_auth=True)
@@ -653,8 +649,6 @@ def test_login_check_blocked_account(mock_check_hash, client):
         assert "zablokowane" in res.get_json()['message']
 
 
-# --- 3. TESTY ENDPOINTÓW UŻYTKOWNIKA (Z3) ---
-
 def test_update_profile_success(client):
     with client.session_transaction() as sess:
         sess['user_id'] = 1
@@ -676,7 +670,6 @@ def test_update_profile_success(client):
 
 def test_update_profile_no_auth(client):
     res = client.put('/api/user/profile', json={})
-    # W Twoim kodzie jest błąd literowy zwracający kod 41, więc asercja łapie to dokładnie w ten sposób
     assert res.status_code == 41
 
 
@@ -741,8 +734,6 @@ def test_reinit_biometrics_success(mock_voice_desc, mock_b64_audio, mock_face_de
         assert "Glos" in res.get_json()['message']
 
 
-# --- 4. TESTY PANELU ADMINISTRATORA ---
-
 def test_admin_panel_view(client):
     with client.session_transaction() as sess:
         sess['user_id'] = 99
@@ -753,7 +744,7 @@ def test_admin_panel_view(client):
             patch('prototype.camera_api.db.session'), \
             patch('prototype.camera_api.render_template') as mock_render:
         mock_query.get.return_value = fake_admin
-        mock_conf.first.return_value = None  # Symuluje brak konfiguracji (wymusza jej stworzenie w kodzie)
+        mock_conf.first.return_value = None
         mock_render.return_value = "Admin HTML"
 
         res = client.get('/admin/panel')
@@ -788,15 +779,13 @@ def test_admin_toggle_user_status(client):
 
     with patch('prototype.camera_api.User.query') as mock_query, \
             patch('prototype.camera_api.db.session'):
-        mock_query.get.return_value = fake_admin  # Autoryzacja admina
-        mock_query.get_or_404.return_value = fake_user  # Obiekt operacji
+        mock_query.get.return_value = fake_admin
+        mock_query.get_or_404.return_value = fake_user
 
-        # Zablokowanie konta
         res = client.post('/api/admin/users/1/toggle')
         assert res.status_code == 200
         assert fake_user.is_active is False
 
-        # Próba zablokowania samego siebie
         mock_query.get_or_404.return_value = fake_admin
         res_self = client.post('/api/admin/users/99/toggle')
         assert res_self.status_code == 400
@@ -819,7 +808,6 @@ def test_admin_delete_user(client):
         assert res.status_code == 200
         assert mock_db.delete.called
 
-        # Próba usunięcia samego siebie
         mock_query.get_or_404.return_value = fake_admin
         res_self = client.delete('/api/admin/users/99')
         assert res_self.status_code == 400
@@ -856,15 +844,12 @@ def test_admin_security_report(client):
             patch('prototype.camera_api.db.session.query') as mock_db_query:
         mock_query.get.return_value = fake_admin
 
-        # 1. Symulacja liczby spoofingów
         mock_hist.filter.return_value.count.return_value = 12
 
-        # 2. Symulacja blokad w logach
         fake_block = LoginHistory(user_id=2, timestamp=datetime.datetime.now(),
                                   status="BLOCKED: Security policy violation")
         mock_hist.filter_by.return_value.order_by.return_value.limit.return_value.all.return_value = [fake_block]
 
-        # 3. Symulacja topowych adresów IP za pomocą NamedTuple
         import collections
         Row = collections.namedtuple('Row', ['ip_address', 'fails'])
         mock_db_query.return_value.filter.return_value.group_by.return_value.order_by.return_value.limit.return_value.all.return_value = [
@@ -879,23 +864,14 @@ def test_admin_security_report(client):
         assert data['top_suspicious_ips'][0]['failures'] == 42
 
 
-# =====================================================================
-# 1. TESTY: NIEZALOGOWANY UŻYTKOWNIK I BRAK ZNALEZIONEGO PROFILU
-# =====================================================================
-
 def test_endpoints_unauthorized_and_edge_cases(client):
-    # Brak sesji - endpointy powinny odrzucić zapytanie
     assert client.get('/api/user/history').status_code == 401
     assert client.post('/api/user/toggle-voice').status_code == 401
     assert client.post('/api/user/reinit_biometrics', json={}).status_code == 401
-
-    # UWAGA: Celowo sprawdzam kod 41, ponieważ w pliku camera_api.py
-    # w linii 481 masz literówkę: `return jsonify(...), 41` zamiast `401`.
     assert client.put('/api/user/profile', json={}).status_code == 41
 
-    # Użytkownik w sesji, ale usunięty z bazy (np. przez admina w międzyczasie)
     with client.session_transaction() as sess:
-        sess['user_id'] = 999  # ID, którego nie ma w bazie
+        sess['user_id'] = 999
 
     with patch('prototype.camera_api.User.query') as mock_query:
         mock_query.get.return_value = None
@@ -911,15 +887,10 @@ def test_update_profile_short_password(client):
     with patch('prototype.camera_api.User.query') as mock_query:
         mock_query.get.return_value = fake_user
 
-        # Hasło krótsze niż 8 znaków (linie 500-501)
         res = client.put('/api/user/profile', json={"password": "short"})
         assert res.status_code == 400
         assert "Hasło musi mieć minimum" in res.get_json()['message']
 
-
-# =====================================================================
-# 2. TESTY: REJESTRACJA I LOGOWANIE (BŁĘDY, GŁOS I ADMIN)
-# =====================================================================
 
 @patch('prototype.camera_api.base64_to_image')
 @patch('prototype.camera_api.detector.get_face')
@@ -937,12 +908,10 @@ def test_register_voice_exceptions(mock_desc, mock_face, mock_b64, client):
             "password": "Password123!", "image": "img"
         }
 
-        # Linia 268 - Brak audio
         res1 = client.post('/register', json=payload_no_audio)
         assert res1.status_code == 400
         assert "Voice sample missing" in res1.get_json()['message']
 
-        # Linia 274 - Błąd przetwarzania głosu
         payload_audio = payload_no_audio.copy()
         payload_audio["audio"] = "bad_audio"
         with patch('prototype.camera_api.base64_to_audio', side_effect=Exception("Decode fail")):
@@ -956,7 +925,6 @@ def test_login_check_wrong_credentials(client):
             patch('prototype.camera_api.check_password_hash', return_value=False):
         mock_query.filter_by.return_value.first.return_value = User(password="hash")
 
-        # Linia 302 - Złe hasło przy sprawdzaniu wstępnym
         res = client.post('/api/login-check', json={"email": "a@b.pl", "password": "złe"})
         assert res.status_code == 400
         assert res.get_json()['valid'] is False
@@ -968,7 +936,6 @@ def test_login_blocked_account(client):
             patch('prototype.camera_api.check_password_hash', return_value=True):
         mock_query.filter_by.return_value.first.return_value = fake_user
 
-        # Linia 345 - Konto zablokowane
         res = client.post('/login', json={"email": "x@x.pl", "password": "p"})
         assert res.status_code == 403
         assert "zablokowane przez administratora" in res.get_json()['message']
@@ -987,7 +954,6 @@ def test_login_blocked_account(client):
 @patch('prototype.camera_api.voice_extractor.describe')
 def test_login_mfa_voice_and_admin(mock_voice_desc, mock_b64_audio, mock_decrypt, mock_face_desc, mock_predict,
                                    mock_crop, mock_parse, mock_dist, mock_get_face, mock_get_frame, mock_security, client):
-    # Symulacja pomyślnego przejścia weryfikacji twarzy
     fake_user = User(id=1, email="mfa@test.pl", password="hash", is_active=True, require_voice_auth=True)
     mock_get_frame.return_value = np.zeros((10, 10, 3))
     mock_get_face.return_value = (np.zeros((10, 10, 3)), (0, 0, 10, 10), None)
@@ -1003,29 +969,24 @@ def test_login_mfa_voice_and_admin(mock_voice_desc, mock_b64_audio, mock_decrypt
             patch('os.listdir', return_value=['m.pth']):
         mock_query.filter_by.return_value.first.return_value = fake_user
 
-        # 1. Brak przysłanego audio (Linie 419-421)
         res_missing = client.post('/login', json={"email": "mfa@test.pl", "password": "p"})
         assert res_missing.status_code == 400
 
-        # 2. Głos się nie zgadza (Linia 435-437)
         mock_b64_audio.return_value = b"audio"
         mock_voice_desc.return_value = np.array([0.0, 1.0])
-        # Wektory ortogonalne = Euklidesowa dopasowana (Twarz), Kosinus 0.0 (Głos)
         mock_decrypt.side_effect = [np.array([0.1, 0.2]), np.array([1.0, 0.0])]
 
         res_mismatch = client.post('/login', json={"email": "mfa@test.pl", "password": "p", "audio": "b64"})
         assert res_mismatch.status_code == 401
 
-        # 3. Błąd mechanizmu głosu (Linie 439-441)
         mock_decrypt.side_effect = [np.array([0.1, 0.2]), np.array([1.0, 0.0])]
         mock_voice_desc.side_effect = Exception("Crash")
         res_crash = client.post('/login', json={"email": "mfa@test.pl", "password": "p", "audio": "b64"})
         assert res_crash.status_code == 500
 
-        # 4. Udane logowanie Admina + błąd DB historii (Linie 455-456, 466)
         fake_user.is_admin = True
         mock_voice_desc.side_effect = None
-        mock_voice_desc.return_value = np.array([1.0, 0.0])  # Pełne dopasowanie
+        mock_voice_desc.return_value = np.array([1.0, 0.0])
         mock_decrypt.side_effect = [np.array([0.1, 0.2]), np.array([1.0, 0.0])]
 
         with patch('prototype.camera_api.db.session.commit', side_effect=Exception("DB Error")):
@@ -1033,10 +994,6 @@ def test_login_mfa_voice_and_admin(mock_voice_desc, mock_b64_audio, mock_decrypt
             assert res_success.status_code == 200
             assert "Admin login successful" in res_success.get_json()['message']
 
-
-# =====================================================================
-# 3. TESTY: REINIT BIOMETRICS I KRAWĘDZIE ADMINA
-# =====================================================================
 
 @patch('prototype.camera_api.base64_to_cv2_img')
 @patch('prototype.camera_api.detector.get_face')
@@ -1047,25 +1004,21 @@ def test_reinit_biometrics_edge_cases(mock_get_face, mock_cv2, client):
     with patch('prototype.camera_api.User.query') as mock_query:
         mock_query.get.return_value = User(id=1)
 
-        # Brak twarzy na zdjęciu (Linia 581)
         mock_cv2.return_value = np.zeros((10, 10, 3), dtype=np.uint8)
         mock_get_face.return_value = (None, None, "No Face")
         res1 = client.post('/api/user/reinit_biometrics', json={"image": "img"})
         assert res1.status_code == 400
         assert "Nie wykryto twarzy" in res1.get_json()['message']
 
-        # Uszkodzony plik obrazu (Linia 583)
         mock_cv2.return_value = None
         res2 = client.post('/api/user/reinit_biometrics', json={"image": "img"})
         assert res2.status_code == 400
         assert "Błąd przetwarzania pliku" in res2.get_json()['message']
 
-        # Pusty ładunek JSON (Linia 599)
         res3 = client.post('/api/user/reinit_biometrics', json={})
         assert res3.status_code == 400
         assert "Nie otrzymano danych" in res3.get_json()['message']
 
-        # Błąd bazy danych przy udanym parsowaniu (Linie 615-617)
         mock_cv2.return_value = np.zeros((10, 10, 3), dtype=np.uint8)
         mock_get_face.return_value = (np.zeros((10, 10, 3)), (0, 0, 1, 1), None)
         with patch('prototype.camera_api.facenet.describe', return_value=np.zeros(128)), \
@@ -1076,10 +1029,8 @@ def test_reinit_biometrics_edge_cases(mock_get_face, mock_cv2, client):
 
 @patch('prototype.camera_api.User.query')
 def test_admin_required_decorator(mock_query, client):
-    # Linia 630 - Niezalogowany (abort 401)
     assert client.get('/admin/panel').status_code == 401
 
-    # Linia 633 - Zalogowany, ale nie admin (abort 403)
     mock_query.get.return_value = User(id=1, is_admin=False)
     with client.session_transaction() as sess:
         sess['user_id'] = 1
@@ -1095,15 +1046,13 @@ def test_admin_exceptions_and_empty_config(mock_query, client):
     with client.session_transaction() as sess:
         sess['user_id'] = 99
 
-    # Usunięcie usera z błędem bazy danych (Linie 707-709)
     with patch('prototype.camera_api.db.session.delete', side_effect=Exception("Lock")):
         res1 = client.delete('/api/admin/users/2')
         assert res1.status_code == 500
 
-    # Tworzenie pliku konfiguracyjnego gdy go nie ma (Linie 719-720)
     with patch('prototype.camera_api.SystemConfig.query') as mock_sys, \
             patch('prototype.camera_api.db.session.add') as mock_add, \
             patch('prototype.camera_api.db.session.commit'):
-        mock_sys.first.return_value = None  # Brak konfiguracji
+        mock_sys.first.return_value = None
         client.post('/api/admin/config', json={"face_threshold": 0.5})
-        assert mock_add.called  # SystemConfig() zostało dodane
+        assert mock_add.called
